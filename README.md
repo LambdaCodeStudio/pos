@@ -99,3 +99,4 @@ En el primer arranque sin usuarios se crea `admin` con la contraseña de
   acción, usuario y fechas, paginado. Vista de línea de tiempo con diff
   antes/después en `/auditoria` del frontend.
 # pos
+# pos
