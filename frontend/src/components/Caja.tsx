@@ -331,6 +331,92 @@ function AbrirCaja({ enLinea, onAbierta }: { enLinea: boolean; onAbierta: () => 
   );
 }
 
+// ---------- Sub-cajas: varios tickets en paralelo dentro de una sesión ----------
+
+/** El "carrito" de un cliente. Una sesión de caja puede tener varios en paralelo. */
+interface Ticket {
+  id: string;
+  lineas: LineaCarrito[];
+  descuento: string;
+  /** Porcentaje preestablecido activo; se recalcula si cambia el subtotal. */
+  descuentoPct: number | null;
+  motivoDescuento: string;
+  /** Último producto agregado — se muestra en el visor grande. */
+  ultimo: { cantidad: number; nombre: string; precio: number | null } | null;
+}
+
+function ticketVacio(): Ticket {
+  return {
+    id: crypto.randomUUID(),
+    lineas: [],
+    descuento: '',
+    descuentoPct: null,
+    motivoDescuento: '',
+    ultimo: null,
+  };
+}
+
+/**
+ * Arma la venta y decide encolar (offline / sesión local) vs. mandarla directo.
+ * La usan tanto el cobro rápido en efectivo como el modal de "otro medio".
+ */
+async function ejecutarVenta({
+  sesion, enLinea, lineas, total, descuentoCentavos, motivoDescuento, pagos, clienteId,
+}: {
+  sesion: SesionLocal;
+  enLinea: boolean;
+  lineas: LineaCarrito[];
+  total: number;
+  descuentoCentavos: number;
+  motivoDescuento: string;
+  pagos: { medio: MedioPago; monto_centavos: number }[];
+  clienteId: string | null;
+}): Promise<string> {
+  const hayFiado = pagos.some((p) => p.medio === 'cuenta_corriente');
+  const cuerpo = {
+    id: crypto.randomUUID(),
+    sesion_id: sesion.id,
+    cliente_id: hayFiado ? clienteId : null,
+    total_centavos: total,
+    descuento_centavos: descuentoCentavos,
+    descuento_motivo: descuentoCentavos > 0 ? motivoDescuento || 'descuento de caja' : null,
+    vendida_en: new Date().toISOString(),
+    items: lineas.map((l) => ({
+      producto_id: l.producto.id,
+      producto_nombre: l.producto.nombre,
+      precio_unitario_centavos: l.producto.precio_actual_centavos ?? 0,
+      cantidad: String(l.cantidad),
+      iva_pct: l.producto.iva_pct,
+      // El descuento va a nivel ticket; el backend verifica
+      // total = Σ subtotales − descuento.
+      subtotal_centavos: Math.round((l.producto.precio_actual_centavos ?? 0) * l.cantidad),
+    })),
+    pagos,
+  };
+
+  async function encolarVenta() {
+    await encolar({
+      id: cuerpo.id,
+      descripcion: `Venta ${pesos(total)} (${lineas.length} ítems)`,
+      metodo: 'POST',
+      ruta: '/ventas',
+      cuerpo,
+    });
+    return 'Venta guardada — se sincroniza al volver la conexión ✓';
+  }
+
+  // La venta de una sesión que nació offline debe ir DETRÁS de la
+  // apertura en la cola, nunca directo.
+  if (!enLinea || sesion.local) return encolarVenta();
+  try {
+    await api('POST', '/ventas', cuerpo);
+    return 'Venta registrada ✓';
+  } catch (err) {
+    if (esFalloDeRed(err) && !hayFiado) return encolarVenta();
+    throw err instanceof Error ? err : new Error('error');
+  }
+}
+
 // ---------- Venta ----------
 
 function Venta({
@@ -340,23 +426,19 @@ function Venta({
   enLinea: boolean;
   onSesionCerrada: () => void;
 }) {
-  const [lineas, setLineas] = useState<LineaCarrito[]>([]);
+  const [tickets, setTickets] = useState<Ticket[]>(() => [ticketVacio()]);
+  const [activoId, setActivoId] = useState(() => tickets[0].id);
   const [busqueda, setBusqueda] = useState('');
   const [resultados, setResultados] = useState<ProductoCaja[]>([]);
-  const [descuento, setDescuento] = useState('');
-  /** Porcentaje preestablecido activo; se recalcula si cambia el subtotal. */
-  const [descuentoPct, setDescuentoPct] = useState<number | null>(null);
   const [dtoAbierto, setDtoAbierto] = useState(false);
   const [presets, setPresets] = useState<number[]>(leerPresetsDescuento);
   const [editandoPresets, setEditandoPresets] = useState(false);
-  const [motivoDescuento, setMotivoDescuento] = useState('');
   const [pagando, setPagando] = useState(false);
+  const [cobrandoRapido, setCobrandoRapido] = useState(false);
   const [cerrando, setCerrando] = useState(false);
   const [verVentas, setVerVentas] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  /** Último producto agregado — se muestra en el visor grande. */
-  const [ultimo, setUltimo] = useState<{ cantidad: number; nombre: string; precio: number | null } | null>(null);
   /** Código escaneado que no existe en el catálogo: se ofrece cargarlo ya. */
   const [altaRapida, setAltaRapida] = useState<string | null>(null);
   /** Modal de ítem personalizado (nombre y precio ad hoc). */
@@ -366,19 +448,44 @@ function Venta({
   const refDescuento = useRef<HTMLInputElement>(null);
   const refLista = useRef<HTMLDivElement>(null);
 
-  const hayModal = pagando || cerrando || verVentas || altaRapida !== null || editandoPresets || itemLibre;
+  const activo = tickets.find((t) => t.id === activoId) ?? tickets[0];
+  const lineas = activo.lineas;
+
+  const hayModal =
+    pagando || cerrando || verVentas || altaRapida !== null || editandoPresets || itemLibre || cobrandoRapido;
   const puedeCobrar = lineas.length > 0 && !lineas.some((l) => l.cantidad <= 0);
   const puedeCerrarCaja = tienePermiso('cerrar_caja');
+
+  /** Aplica un cambio (parcial o derivado del estado actual) solo al ticket activo. */
+  function actualizarActivo(cambio: Partial<Ticket> | ((t: Ticket) => Partial<Ticket>)) {
+    setTickets((prev) =>
+      prev.map((t) => (t.id === activoId ? { ...t, ...(typeof cambio === 'function' ? cambio(t) : cambio) } : t)),
+    );
+  }
+
+  function nuevaSubcaja() {
+    const t = ticketVacio();
+    setTickets((prev) => [...prev, t]);
+    setActivoId(t.id);
+    setDtoAbierto(false);
+    refBusqueda.current?.focus();
+  }
+
+  function cerrarSubcaja(id: string) {
+    const objetivo = tickets.find((t) => t.id === id);
+    if (!objetivo) return;
+    if (objetivo.lineas.length > 0 && !window.confirm('Esta sub-caja tiene productos cargados. ¿Cerrarla igual?')) return;
+    const restantes = tickets.filter((t) => t.id !== id);
+    const nuevos = restantes.length > 0 ? restantes : [ticketVacio()];
+    setTickets(nuevos);
+    if (id === activoId) setActivoId(nuevos[0].id);
+  }
 
   function cancelarTicket() {
     if (lineas.length === 0) return;
     if (!window.confirm('¿Cancelar el ticket completo?')) return;
-    setLineas([]);
-    setDescuento('');
-    setDescuentoPct(null);
+    actualizarActivo({ lineas: [], descuento: '', descuentoPct: null, motivoDescuento: '', ultimo: null });
     setDtoAbierto(false);
-    setMotivoDescuento('');
-    setUltimo(null);
     refBusqueda.current?.focus();
   }
 
@@ -387,6 +494,13 @@ function Venta({
   useEffect(() => {
     function manejar(e: KeyboardEvent) {
       if (hayModal) return;
+      // Ctrl+1..Ctrl+9 saltan directo a esa sub-caja (si existe).
+      if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
+        e.preventDefault();
+        const destino = tickets[Number(e.key) - 1];
+        if (destino) setActivoId(destino.id);
+        return;
+      }
       switch (e.key) {
         case 'F2':
           e.preventDefault();
@@ -404,6 +518,10 @@ function Venta({
         case 'F6':
           if (enLinea) { e.preventDefault(); setVerVentas(true); }
           break;
+        case 'F7':
+          e.preventDefault();
+          if (puedeCobrar) setPagando(true);
+          break;
         case 'F8':
           if (puedeCerrarCaja && enLinea && !sesion.local) { e.preventDefault(); setCerrando(true); }
           break;
@@ -413,16 +531,16 @@ function Venta({
           break;
         case 'F10':
           e.preventDefault();
-          if (puedeCobrar) setPagando(true);
+          if (puedeCobrar) void cobrarEfectivoRapido();
           break;
         default: {
           // El escáner "tipea" donde esté el foco: si ningún campo está
           // activo, el tipeo cae a la búsqueda para que escanear ande siempre.
-          const activo = document.activeElement;
+          const elementoActivo = document.activeElement;
           const esCampo =
-            activo instanceof HTMLInputElement ||
-            activo instanceof HTMLTextAreaElement ||
-            activo instanceof HTMLSelectElement;
+            elementoActivo instanceof HTMLInputElement ||
+            elementoActivo instanceof HTMLTextAreaElement ||
+            elementoActivo instanceof HTMLSelectElement;
           if (!esCampo && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
             refBusqueda.current?.focus();
           }
@@ -441,23 +559,19 @@ function Venta({
   // total = Σ subtotales − descuento, sin negativos). Con un porcentaje
   // activo se deriva del subtotal vivo: agregar productos lo recalcula.
   const descuentoCentavos = Math.min(
-    descuentoPct !== null
-      ? Math.round((subtotal * descuentoPct) / 100)
-      : aCentavos(descuento || '0') ?? 0,
+    activo.descuentoPct !== null
+      ? Math.round((subtotal * activo.descuentoPct) / 100)
+      : aCentavos(activo.descuento || '0') ?? 0,
     subtotal,
   );
   const total = subtotal - descuentoCentavos;
 
   function aplicarDescuentoPct(pct: number) {
-    setDescuentoPct(pct);
-    setDescuento('');
-    setMotivoDescuento(`descuento ${pct}%`);
+    actualizarActivo({ descuentoPct: pct, descuento: '', motivoDescuento: `descuento ${pct}%` });
   }
 
   function quitarDescuento() {
-    setDescuentoPct(null);
-    setDescuento('');
-    setMotivoDescuento('');
+    actualizarActivo({ descuentoPct: null, descuento: '', motivoDescuento: '' });
   }
 
   function abrirDescuento() {
@@ -476,14 +590,14 @@ function Venta({
     // pero cada uno tiene su propio nombre y precio.
     const existente = lineas.find((l) => !l.libre && l.producto.id === p.id);
     const cantidadNueva = existente && p.unidad_de_venta === 'unidad' ? existente.cantidad + 1 : 1;
-    setLineas((previas) => {
-      const ya = previas.find((l) => !l.libre && l.producto.id === p.id);
-      if (ya && p.unidad_de_venta === 'unidad') {
-        return previas.map((l) => (l.clave === ya.clave ? { ...l, cantidad: l.cantidad + 1 } : l));
-      }
-      return [...previas, { clave: crypto.randomUUID(), producto: p, cantidad: 1 }];
+    actualizarActivo((t) => {
+      const ya = t.lineas.find((l) => !l.libre && l.producto.id === p.id);
+      const lineasNuevas =
+        ya && p.unidad_de_venta === 'unidad'
+          ? t.lineas.map((l) => (l.clave === ya.clave ? { ...l, cantidad: l.cantidad + 1 } : l))
+          : [...t.lineas, { clave: crypto.randomUUID(), producto: p, cantidad: 1 }];
+      return { lineas: lineasNuevas, ultimo: { cantidad: cantidadNueva, nombre: p.nombre, precio: p.precio_actual_centavos } };
     });
-    setUltimo({ cantidad: cantidadNueva, nombre: p.nombre, precio: p.precio_actual_centavos });
     // Un debounce de búsqueda pendiente no debe reabrir el desplegable
     // después de escanear.
     window.clearTimeout(temporizador.current);
@@ -549,41 +663,77 @@ function Venta({
 
   function cambiarCantidad(clave: string, texto: string) {
     const valor = parseFloat(texto.replace(',', '.'));
-    setLineas((previas) =>
-      previas.map((l) => (l.clave === clave ? { ...l, cantidad: Number.isFinite(valor) ? valor : 0 } : l)),
-    );
+    actualizarActivo((t) => ({
+      lineas: t.lineas.map((l) => (l.clave === clave ? { ...l, cantidad: Number.isFinite(valor) ? valor : 0 } : l)),
+    }));
   }
 
   async function agregarItemLibre(nombre: string, precioCentavos: number) {
     const base = await productoBasePersonalizado(enLinea);
     setError(null);
-    setLineas((previas) => [...previas, {
-      clave: crypto.randomUUID(),
-      producto: { ...base, nombre, precio_actual_centavos: precioCentavos, codigos_barras: [] },
-      cantidad: 1,
-      libre: true,
-    }]);
-    setUltimo({ cantidad: 1, nombre, precio: precioCentavos });
+    actualizarActivo((t) => ({
+      lineas: [...t.lineas, {
+        clave: crypto.randomUUID(),
+        producto: { ...base, nombre, precio_actual_centavos: precioCentavos, codigos_barras: [] },
+        cantidad: 1,
+        libre: true,
+      }],
+      ultimo: { cantidad: 1, nombre, precio: precioCentavos },
+    }));
     setItemLibre(false);
     refBusqueda.current?.focus();
   }
 
-  // El ticket con scroll siempre muestra lo último que se escaneó.
+  // El ticket con scroll siempre muestra lo último que se escaneó (y vuelve
+  // arriba al cambiar de sub-caja).
   useEffect(() => {
     refLista.current?.scrollTo({ top: refLista.current.scrollHeight });
-  }, [lineas.length]);
+  }, [lineas.length, activoId]);
 
+  /**
+   * Se llama al confirmar cualquier venta (cobro rápido o modal). La sub-caja
+   * recién cobrada se cierra si hay otras abiertas (el cliente ya se fue);
+   * si era la única, queda vacía in-place.
+   */
   function ventaConfirmada(mensaje: string) {
-    setLineas([]);
-    setDescuento('');
-    setDescuentoPct(null);
+    const restantes = tickets.filter((t) => t.id !== activoId);
+    if (restantes.length > 0) {
+      setTickets(restantes);
+      setActivoId(restantes[0].id);
+    } else {
+      const nuevo = ticketVacio();
+      setTickets([nuevo]);
+      setActivoId(nuevo.id);
+    }
     setDtoAbierto(false);
-    setMotivoDescuento('');
-    setUltimo(null);
     setPagando(false);
     setAviso(mensaje);
     window.setTimeout(() => setAviso(null), 3000);
     refBusqueda.current?.focus();
+  }
+
+  /** F10 / botón "Cobrar": cobra todo en efectivo, sin modal, pago exacto. */
+  async function cobrarEfectivoRapido() {
+    if (!puedeCobrar || cobrandoRapido) return;
+    setError(null);
+    setCobrandoRapido(true);
+    try {
+      const mensaje = await ejecutarVenta({
+        sesion,
+        enLinea,
+        lineas: activo.lineas,
+        total,
+        descuentoCentavos,
+        motivoDescuento: activo.motivoDescuento,
+        pagos: [{ medio: 'efectivo', monto_centavos: total }],
+        clienteId: null,
+      });
+      ventaConfirmada(mensaje);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'error al cobrar');
+    } finally {
+      setCobrandoRapido(false);
+    }
   }
 
   return (
@@ -606,8 +756,60 @@ function Venta({
         }
       />
 
+      {/* Sub-cajas: varios tickets en paralelo para atender más de un cliente a la vez. */}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {tickets.map((t, i) => (
+          <div
+            key={t.id}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+              t.id === activoId
+                ? 'border-acento-600 bg-acento-50 text-acento-800'
+                : 'border-stone-300 bg-white text-stone-600 hover:bg-stone-50'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => setActivoId(t.id)}
+              disabled={hayModal}
+              className="flex items-center gap-1.5 disabled:cursor-not-allowed"
+            >
+              {i < 9 && (
+                <kbd className="rounded bg-stone-800 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-white">
+                  Ctrl+{i + 1}
+                </kbd>
+              )}
+              <span>Cliente {i + 1}</span>
+              {t.lineas.length > 0 && (
+                <span className="rounded-full bg-stone-200 px-1.5 text-[11px] font-semibold tabular-nums text-stone-600">
+                  {t.lineas.length}
+                </span>
+              )}
+            </button>
+            {tickets.length > 1 && (
+              <button
+                type="button"
+                onClick={() => cerrarSubcaja(t.id)}
+                disabled={hayModal}
+                aria-label="Cerrar sub-caja"
+                className="text-stone-300 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={nuevaSubcaja}
+          disabled={hayModal}
+          className="inline-flex items-center gap-1 rounded-lg border border-dashed border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-500 transition hover:border-acento-400 hover:text-acento-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          + Nueva sub-caja
+        </button>
+      </div>
+
       {aviso && (
-        <div className="mb-4 rounded-lg border border-acento-200 bg-acento-50 px-4 py-2.5 text-sm font-medium text-acento-800">
+        <div className="mb-4 mt-4 rounded-lg border border-acento-200 bg-acento-50 px-4 py-2.5 text-sm font-medium text-acento-800">
           {aviso}
         </div>
       )}
@@ -628,12 +830,12 @@ function Venta({
           </div>
         </div>
         <p className="mt-4 min-h-[1.75rem] truncate border-t border-stone-100 pt-2.5 text-lg">
-          {ultimo ? (
+          {activo.ultimo ? (
             <>
               <span className="font-semibold text-acento-700">
-                {String(ultimo.cantidad).replace('.', ',')} × {pesos(ultimo.precio)}
+                {String(activo.ultimo.cantidad).replace('.', ',')} × {pesos(activo.ultimo.precio)}
               </span>
-              <span className="ml-2 text-stone-700">{ultimo.nombre}</span>
+              <span className="ml-2 text-stone-700">{activo.ultimo.nombre}</span>
             </>
           ) : (
             <span className="text-stone-400">Escaneá un producto para empezar</span>
@@ -697,7 +899,7 @@ function Venta({
                     </p>
                     <button
                       className="rounded-lg p-1.5 text-stone-300 hover:bg-red-50 hover:text-red-500"
-                      onClick={() => setLineas((prev) => prev.filter((x) => x.clave !== l.clave))}
+                      onClick={() => actualizarActivo((t) => ({ lineas: t.lineas.filter((x) => x.clave !== l.clave) }))}
                       aria-label="Quitar"
                     >
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
@@ -731,7 +933,7 @@ function Venta({
                   </span>
                   <span className={descuentoCentavos > 0 ? 'font-medium text-red-600' : 'text-stone-400'}>
                     {descuentoCentavos > 0
-                      ? `−${pesos(descuentoCentavos)}${descuentoPct !== null ? ` (${descuentoPct}%)` : ''}`
+                      ? `−${pesos(descuentoCentavos)}${activo.descuentoPct !== null ? ` (${activo.descuentoPct}%)` : ''}`
                       : '—'}
                   </span>
                 </button>
@@ -745,7 +947,7 @@ function Venta({
                           type="button"
                           onClick={() => aplicarDescuentoPct(pct)}
                           className={`rounded-full px-3 py-1 text-sm font-semibold transition ${
-                            descuentoPct === pct
+                            activo.descuentoPct === pct
                               ? 'bg-acento-600 text-white shadow-sm'
                               : 'border border-stone-300 bg-white text-stone-600 hover:bg-stone-100'
                           }`}
@@ -781,15 +983,15 @@ function Venta({
                       <input
                         ref={refDescuento}
                         className="w-28 rounded-lg border border-stone-300 px-2 py-1.5 text-right text-base"
-                        value={descuento}
-                        onChange={(e) => { setDescuento(e.target.value); setDescuentoPct(null); }}
+                        value={activo.descuento}
+                        onChange={(e) => actualizarActivo({ descuento: e.target.value, descuentoPct: null })}
                         placeholder="0,00"
                         inputMode="decimal"
                       />
                     </div>
                     {descuentoCentavos > 0 && (
-                      <input className={claseInput + ' text-sm'} value={motivoDescuento}
-                        onChange={(e) => setMotivoDescuento(e.target.value)} placeholder="Motivo del descuento" />
+                      <input className={claseInput + ' text-sm'} value={activo.motivoDescuento}
+                        onChange={(e) => actualizarActivo({ motivoDescuento: e.target.value })} placeholder="Motivo del descuento" />
                     )}
                   </div>
                 )}
@@ -800,9 +1002,17 @@ function Venta({
               </div>
             </dl>
             <div className="mt-5">
-              <Boton grande deshabilitado={!puedeCobrar} onClick={() => setPagando(true)}>
-                Cobrar {pesos(total)} (F10)
+              <Boton grande deshabilitado={!puedeCobrar || cobrandoRapido} onClick={() => void cobrarEfectivoRapido()}>
+                {cobrandoRapido ? 'Cobrando…' : `Cobrar ${pesos(total)} en efectivo (F10)`}
               </Boton>
+              <button
+                type="button"
+                onClick={() => setPagando(true)}
+                disabled={!puedeCobrar}
+                className="mt-2 w-full text-center text-sm font-medium text-stone-500 transition hover:text-acento-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Otro medio de pago <kbd className="rounded bg-stone-100 px-1 py-0.5 font-mono text-[10px] text-stone-500">F7</kbd>
+              </button>
             </div>
           </Tarjeta>
         </div>
@@ -822,8 +1032,11 @@ function Venta({
         <BotonAtajo tecla="F9" onClick={cancelarTicket} deshabilitado={lineas.length === 0}>
           Cancelar ticket
         </BotonAtajo>
-        <BotonAtajo tecla="F10" onClick={() => setPagando(true)} deshabilitado={!puedeCobrar}>
-          Cobrar
+        <BotonAtajo tecla="F10" onClick={() => void cobrarEfectivoRapido()} deshabilitado={!puedeCobrar || cobrandoRapido}>
+          Cobrar (efectivo)
+        </BotonAtajo>
+        <BotonAtajo tecla="F7" onClick={() => setPagando(true)} deshabilitado={!puedeCobrar}>
+          Otro medio de pago
         </BotonAtajo>
         <BotonAtajo tecla="F6" onClick={() => setVerVentas(true)} deshabilitado={!enLinea}>
           Ventas
@@ -839,10 +1052,10 @@ function Venta({
         <ModalCobro
           sesion={sesion}
           enLinea={enLinea}
-          lineas={lineas}
+          lineas={activo.lineas}
           total={total}
           descuentoCentavos={descuentoCentavos}
-          motivoDescuento={motivoDescuento}
+          motivoDescuento={activo.motivoDescuento}
           onCerrar={() => setPagando(false)}
           onConfirmada={ventaConfirmada}
         />
@@ -1111,7 +1324,9 @@ function ModalCobro({
   onCerrar: () => void;
   onConfirmada: (mensaje: string) => void;
 }) {
-  const [pagos, setPagos] = useState<FilaPago[]>([{ medio: 'efectivo', monto: (total / 100).toFixed(2).replace('.', ',') }]);
+  // El efectivo tiene su propio atajo de cobro rápido (F10, sin modal); este
+  // modal es para elegir otro medio, así que arranca en tarjeta.
+  const [pagos, setPagos] = useState<FilaPago[]>([{ medio: 'tarjeta', monto: (total / 100).toFixed(2).replace('.', ',') }]);
   const [recibido, setRecibido] = useState('');
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clienteId, setClienteId] = useState('');
@@ -1148,53 +1363,19 @@ function ModalCobro({
       return;
     }
     setConfirmando(true);
-
-    const cuerpo = {
-      id: crypto.randomUUID(),
-      sesion_id: sesion.id,
-      cliente_id: hayFiado ? clienteId : null,
-      total_centavos: total,
-      descuento_centavos: descuentoCentavos,
-      descuento_motivo: descuentoCentavos > 0 ? motivoDescuento || 'descuento de caja' : null,
-      vendida_en: new Date().toISOString(),
-      items: lineas.map((l) => ({
-        producto_id: l.producto.id,
-        producto_nombre: l.producto.nombre,
-        precio_unitario_centavos: l.producto.precio_actual_centavos ?? 0,
-        cantidad: String(l.cantidad),
-        iva_pct: l.producto.iva_pct,
-        // El descuento va a nivel ticket; el backend verifica
-        // total = Σ subtotales − descuento.
-        subtotal_centavos: Math.round((l.producto.precio_actual_centavos ?? 0) * l.cantidad),
-      })),
-      pagos: pagos.map((p) => ({ medio: p.medio, monto_centavos: aCentavos(p.monto) ?? 0 })),
-    };
-
-    async function encolarVenta() {
-      await encolar({
-        id: cuerpo.id,
-        descripcion: `Venta ${pesos(total)} (${lineas.length} ítems)`,
-        metodo: 'POST',
-        ruta: '/ventas',
-        cuerpo,
-      });
-      onConfirmada('Venta guardada — se sincroniza al volver la conexión ✓');
-    }
-
     try {
-      // La venta de una sesión que nació offline debe ir DETRÁS de la
-      // apertura en la cola, nunca directo.
-      if (!enLinea || sesion.local) {
-        await encolarVenta();
-        return;
-      }
-      await api('POST', '/ventas', cuerpo);
-      onConfirmada('Venta registrada ✓');
+      const mensaje = await ejecutarVenta({
+        sesion,
+        enLinea,
+        lineas,
+        total,
+        descuentoCentavos,
+        motivoDescuento,
+        pagos: pagos.map((p) => ({ medio: p.medio, monto_centavos: aCentavos(p.monto) ?? 0 })),
+        clienteId: hayFiado ? clienteId : null,
+      });
+      onConfirmada(mensaje);
     } catch (err) {
-      if (esFalloDeRed(err) && !hayFiado) {
-        await encolarVenta();
-        return;
-      }
       setError(err instanceof Error ? err.message : 'error');
       setConfirmando(false);
     }
