@@ -33,7 +33,7 @@ export default function Clientes() {
       />
 
       <Tarjeta>
-        <div className="mb-4 flex items-center gap-4">
+        <div className="mb-4 flex flex-wrap items-center gap-4">
           <input className={claseInput + ' max-w-xs'} placeholder="Buscar por nombre…"
             value={buscar} onChange={(e) => setBuscar(e.target.value)} />
           <label className="flex items-center gap-2 text-sm text-stone-600">
@@ -73,7 +73,7 @@ export default function Clientes() {
                   </td>
                   <td className="px-3 py-3">{!c.activo && <Insignia tono="rojo">inactivo</Insignia>}</td>
                   <td className="px-3 py-3 text-right">
-                    <span className="invisible flex justify-end gap-1 group-hover:visible">
+                    <span className="flex justify-end gap-1">
                       <Boton chico variante="fantasma" onClick={() => setCuentaDe(c)}>Cuenta</Boton>
                       {puede && <Boton chico variante="fantasma" onClick={() => setEditando(c)}>Editar</Boton>}
                     </span>
@@ -212,18 +212,22 @@ function ModalCuenta({ cliente, onCerrar }: { cliente: Cliente; onCerrar: () => 
           </div>
 
           {pagando && (
-            <form onSubmit={registrarPago} className="flex items-end gap-2 rounded-xl border border-acento-200 bg-acento-50/50 p-4">
-              <Campo etiqueta="Monto ($)">
-                <input className={claseInput} value={monto} onChange={(e) => setMonto(e.target.value)} inputMode="decimal" autoFocus />
-              </Campo>
-              <Campo etiqueta="Medio">
-                <select className={claseInput} value={medio} onChange={(e) => setMedio(e.target.value as MedioPago)}>
-                  <option value="efectivo">Efectivo</option>
-                  <option value="tarjeta">Tarjeta</option>
-                  <option value="mercado_pago">Mercado Pago</option>
-                  <option value="transferencia">Transferencia</option>
-                </select>
-              </Campo>
+            <form onSubmit={registrarPago} className="flex flex-wrap items-end gap-2 rounded-xl border border-acento-200 bg-acento-50/50 p-4">
+              <div className="min-w-[130px] flex-1">
+                <Campo etiqueta="Monto ($)">
+                  <input className={claseInput} value={monto} onChange={(e) => setMonto(e.target.value)} inputMode="decimal" autoFocus />
+                </Campo>
+              </div>
+              <div className="min-w-[150px] flex-1">
+                <Campo etiqueta="Medio">
+                  <select className={claseInput} value={medio} onChange={(e) => setMedio(e.target.value as MedioPago)}>
+                    <option value="efectivo">Efectivo</option>
+                    <option value="tarjeta">Tarjeta</option>
+                    <option value="mercado_pago">Mercado Pago</option>
+                    <option value="transferencia">Transferencia</option>
+                  </select>
+                </Campo>
+              </div>
               <Boton tipo="submit">Cobrar</Boton>
               <Boton variante="fantasma" onClick={() => setPagando(false)}>Cancelar</Boton>
             </form>

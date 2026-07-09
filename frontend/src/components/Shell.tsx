@@ -57,8 +57,11 @@ const NAVEGACION: ItemNav[] = [
   },
 ];
 
-/** La preferencia de menú oculto persiste: el puesto de caja lo deja cerrado. */
+/** La preferencia de menú oculto persiste: el puesto de caja lo deja cerrado (solo aplica en desktop, ≥1024px). */
 const CLAVE_MENU_OCULTO = 'pos_menu_oculto';
+
+/** Por debajo de este ancho el sidebar deja de empujar contenido y pasa a ser un drawer superpuesto. */
+const CONSULTA_ANGOSTO = '(max-width: 1023px)';
 
 export default function Shell({
   seccion,
@@ -71,7 +74,11 @@ export default function Shell({
   amplio?: boolean;
 }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null);
-  const [menuOculto, setMenuOculto] = useState(false);
+  /** Preferencia persistida del kiosco de escritorio (≥1024px). */
+  const [ocultoEnDesktop, setOcultoEnDesktop] = useState(false);
+  /** Estado efímero del drawer en tablet/celular (<1024px): arranca cerrado siempre. */
+  const [abiertoEnAngosto, setAbiertoEnAngosto] = useState(false);
+  const [esAngosto, setEsAngosto] = useState(false);
 
   useEffect(() => {
     if (!tokenGuardado()) {
@@ -79,11 +86,23 @@ export default function Shell({
       return;
     }
     setUsuario(usuarioGuardado());
-    setMenuOculto(localStorage.getItem(CLAVE_MENU_OCULTO) === '1');
+    setOcultoEnDesktop(localStorage.getItem(CLAVE_MENU_OCULTO) === '1');
+  }, []);
+
+  useEffect(() => {
+    const consulta = window.matchMedia(CONSULTA_ANGOSTO);
+    setEsAngosto(consulta.matches);
+    const alCambiar = (e: MediaQueryListEvent) => setEsAngosto(e.matches);
+    consulta.addEventListener('change', alCambiar);
+    return () => consulta.removeEventListener('change', alCambiar);
   }, []);
 
   function alternarMenu() {
-    setMenuOculto((oculto) => {
+    if (esAngosto) {
+      setAbiertoEnAngosto((abierto) => !abierto);
+      return;
+    }
+    setOcultoEnDesktop((oculto) => {
       localStorage.setItem(CLAVE_MENU_OCULTO, oculto ? '0' : '1');
       return !oculto;
     });
@@ -94,10 +113,11 @@ export default function Shell({
   const visibles = NAVEGACION.filter(
     (item) => !item.permisos || item.permisos.some((p) => usuario.permisos.includes(p)),
   );
+  const mostrarBotonAbrir = esAngosto ? !abiertoEnAngosto : ocultoEnDesktop;
 
   return (
     <div className="flex min-h-screen">
-      {menuOculto && (
+      {mostrarBotonAbrir && (
         <button
           onClick={alternarMenu}
           aria-label="Mostrar menú"
@@ -108,8 +128,20 @@ export default function Shell({
         </button>
       )}
 
+      {/* Backdrop del drawer: solo aparece en tablet/celular con el menú abierto. */}
+      {abiertoEnAngosto && (
+        <div
+          onClick={() => setAbiertoEnAngosto(false)}
+          aria-hidden="true"
+          className="fixed inset-0 z-30 bg-stone-900/50 lg:hidden"
+        />
+      )}
+
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-56 flex-col bg-stone-900 text-stone-300 transition-transform ${
-        menuOculto ? '-translate-x-full' : 'translate-x-0'
+        [
+          abiertoEnAngosto ? 'translate-x-0' : '-translate-x-full',
+          ocultoEnDesktop ? 'lg:-translate-x-full' : 'lg:translate-x-0',
+        ].join(' ')
       }`}>
         <div className="flex items-center gap-2.5 px-5 py-5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-acento-600 font-bold text-white">P</div>
@@ -153,7 +185,9 @@ export default function Shell({
         </div>
       </aside>
 
-      <main className={`flex-1 py-7 pr-8 transition-[margin] ${menuOculto ? 'ml-0 pl-16' : 'ml-56 pl-8'}`}>
+      <main className={`min-w-0 flex-1 py-7 px-4 transition-[margin,padding] sm:px-6 ${
+        ocultoEnDesktop ? 'lg:ml-0 lg:pl-16 lg:pr-8' : 'lg:ml-56 lg:pl-8 lg:pr-8'
+      }`}>
         <div className={`mx-auto ${amplio ? 'max-w-none' : 'max-w-6xl'}`}>{children}</div>
       </main>
     </div>

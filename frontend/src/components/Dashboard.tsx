@@ -49,8 +49,8 @@ function Contenido() {
             <ul className="divide-y divide-stone-100">
               {alertas.slice(0, 8).map((a) => (
                 <li key={a.lote_id} className="flex items-center justify-between gap-3 py-2.5">
-                  <div>
-                    <p className="text-sm font-medium text-stone-800">{a.producto_nombre}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-stone-800">{a.producto_nombre}</p>
                     <p className="text-xs text-stone-400">
                       {cantidad(a.cantidad_actual)} u. · vence {fecha(a.vencimiento)}
                     </p>
@@ -77,14 +77,14 @@ function Contenido() {
               ) : (
                 <ul className="divide-y divide-stone-100">
                   {pendientesEtiquetar.slice(0, 5).map((r) => (
-                    <li key={r.id} className="flex items-center justify-between py-2.5">
-                      <div>
-                        <p className="text-sm font-medium text-stone-800">
+                    <li key={r.id} className="flex items-center justify-between gap-3 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-stone-800">
                           {r.proveedor_nombre ?? 'Sin proveedor'}
                         </p>
                         <p className="text-xs text-stone-400">recibida el {fecha(r.confirmada_en)}</p>
                       </div>
-                      <a href={`/recepcion?id=${r.id}`} className="text-xs font-medium text-acento-700 hover:underline">
+                      <a href={`/recepcion?id=${r.id}`} className="shrink-0 text-xs font-medium text-acento-700 hover:underline">
                         {r.items_pendientes_etiquetar} ítems →
                       </a>
                     </li>
@@ -102,9 +102,9 @@ function Contenido() {
             ) : (
               <ul className="divide-y divide-stone-100">
                 {sesiones.map((s) => (
-                  <li key={s.id} className="flex items-center justify-between py-2.5">
-                    <div>
-                      <p className="text-sm font-medium text-stone-800">{s.usuario_nombre}</p>
+                  <li key={s.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-stone-800">{s.usuario_nombre}</p>
                       <p className="text-xs text-stone-400">{s.cantidad_ventas} ventas</p>
                     </div>
                     <Insignia tono="verde">abierta</Insignia>

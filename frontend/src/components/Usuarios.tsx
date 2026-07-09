@@ -82,9 +82,7 @@ function TablaUsuarios() {
               </td>
               <td className="px-3 py-3">{!u.activo && <Insignia tono="rojo">inactivo</Insignia>}</td>
               <td className="px-3 py-3 text-right">
-                <span className="invisible group-hover:visible">
-                  <Boton chico variante="fantasma" onClick={() => setEditando(u)}>Editar</Boton>
-                </span>
+                <Boton chico variante="fantasma" onClick={() => setEditando(u)}>Editar</Boton>
               </td>
             </tr>
           ))}

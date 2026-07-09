@@ -629,7 +629,8 @@ function Venta({
     }
     if (resultados.length > 0) { agregarProducto(resultados[0]); return; }
     // Un código escaneado que no existe en el catálogo: se ofrece cargarlo ya.
-    if (/^\d{6,}$/.test(termino)) {
+    // Algunos códigos internos son de 1-3 dígitos, así que no hay piso de longitud.
+    if (/^\d+$/.test(termino)) {
       if (!enLinea) {
         setError(`El código ${termino} no está en el catálogo local y sin conexión no se puede crear.`);
       } else if (!tienePermiso('gestionar_catalogo')) {
@@ -822,9 +823,9 @@ function Venta({
             <p className="text-xs font-semibold uppercase tracking-widest text-stone-400">Ítems</p>
             <p className="text-5xl font-bold leading-none tabular-nums text-stone-700">{lineas.length}</p>
           </div>
-          <div className="text-right">
+          <div className="min-w-0 text-right">
             <p className="text-xs font-semibold uppercase tracking-widest text-stone-400">Importe total</p>
-            <p className="text-6xl font-bold leading-none tracking-tight tabular-nums text-stone-900 sm:text-7xl">
+            <p className="truncate text-6xl font-bold leading-none tracking-tight tabular-nums text-stone-900 sm:text-7xl">
               {pesos(total)}
             </p>
           </div>
@@ -1223,13 +1224,23 @@ function ModalAltaRapida({
   onCerrar: () => void;
   onCreado: (p: ProductoCaja) => void;
 }) {
+  const [modo, setModo] = useState<'nuevo' | 'existente'>('nuevo');
+
+  // ---- modo "nuevo": crear un producto y asociarle este código ----
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [nombre, setNombre] = useState('');
   const [categoriaId, setCategoriaId] = useState('');
   const [precio, setPrecio] = useState('');
+  const puedePrecio = tienePermiso('modificar_precios');
+
+  // ---- modo "existente": el producto ya está cargado, solo falta el código ----
+  const [buscar, setBuscar] = useState('');
+  const [resultados, setResultados] = useState<Producto[]>([]);
+  const [elegido, setElegido] = useState<Producto | null>(null);
+  const temporizador = useRef<number | undefined>(undefined);
+
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
-  const puedePrecio = tienePermiso('modificar_precios');
 
   useEffect(() => {
     api<Categoria[]>('GET', '/catalogo/categorias')
@@ -1240,7 +1251,22 @@ function ModalAltaRapida({
       .catch(() => setError('No se pudieron cargar las categorías.'));
   }, []);
 
-  async function guardar(e: React.FormEvent) {
+  function alEscribirExistente(valor: string) {
+    setBuscar(valor);
+    setElegido(null);
+    window.clearTimeout(temporizador.current);
+    if (valor.trim().length < 1) { setResultados([]); return; }
+    temporizador.current = window.setTimeout(async () => {
+      try {
+        const r = await api<Producto[]>('GET', `/catalogo/productos?buscar=${encodeURIComponent(valor.trim())}&limite=8`);
+        setResultados(r);
+      } catch {
+        setResultados([]);
+      }
+    }, 200);
+  }
+
+  async function guardarNuevo(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     const centavos = puedePrecio ? aCentavos(precio) : null;
@@ -1263,44 +1289,119 @@ function ModalAltaRapida({
     }
   }
 
+  async function asociarExistente(e: React.FormEvent) {
+    e.preventDefault();
+    if (!elegido) return;
+    setError(null);
+    setGuardando(true);
+    try {
+      await api('POST', `/catalogo/productos/${elegido.id}/codigos-barras`, { codigo });
+      sincronizarCatalogo().catch(() => {});
+      onCreado(aProductoCaja({ ...elegido, codigos_barras: [...elegido.codigos_barras, codigo] }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'error');
+      setGuardando(false);
+    }
+  }
+
   return (
     <Modal abierto titulo="Producto no encontrado" onCerrar={onCerrar}>
-      <form onSubmit={guardar} className="space-y-4">
+      <div className="space-y-4">
         <p className="text-sm text-stone-500">
           El código <strong className="font-mono text-stone-800">{codigo}</strong> no está en el catálogo.
-          ¿Lo cargás ahora? Queda asociado al código y va directo al ticket.
         </p>
-        <Campo etiqueta="Nombre del producto">
-          <input className={claseInput + ' text-base'} value={nombre}
-            onChange={(e) => setNombre(e.target.value)} autoFocus />
-        </Campo>
-        <div className="grid grid-cols-2 gap-4">
-          <Campo etiqueta="Categoría">
-            <select className={claseInput} value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
-              {categorias.map((c) => (
-                <option key={c.id} value={c.id}>{c.nombre}</option>
-              ))}
-            </select>
-          </Campo>
-          {puedePrecio ? (
-            <Campo etiqueta="Precio de venta ($)">
-              <input className={claseInput + ' text-base font-semibold'} value={precio}
-                onChange={(e) => setPrecio(e.target.value)} inputMode="decimal" placeholder="0,00" />
-            </Campo>
-          ) : (
-            <p className="self-end pb-2 text-xs text-amber-600">
-              No tenés permiso para poner precio: el producto se crea sin precio y no se puede vender hasta tenerlo.
+
+        <div className="grid grid-cols-2 rounded-lg bg-stone-100 p-1 text-sm font-medium">
+          {(['nuevo', 'existente'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setModo(m)}
+              className={`rounded-md py-1.5 transition ${
+                modo === m ? 'bg-white text-stone-800 shadow-sm' : 'text-stone-500 hover:text-stone-700'
+              }`}
+            >
+              {m === 'nuevo' ? 'Producto nuevo' : 'Ya existe en el catálogo'}
+            </button>
+          ))}
+        </div>
+
+        {modo === 'nuevo' ? (
+          <form onSubmit={guardarNuevo} className="space-y-4">
+            <p className="text-sm text-stone-500">
+              ¿Lo cargás ahora? Queda asociado al código y va directo al ticket.
             </p>
-          )}
-        </div>
-        <MensajeError error={error} />
-        <div className="flex justify-end gap-2 pt-1">
-          <Boton variante="secundario" onClick={onCerrar}>No, volver</Boton>
-          <Boton tipo="submit" deshabilitado={guardando || !nombre.trim() || !categoriaId}>
-            {guardando ? 'Cargando…' : 'Cargar y agregar al ticket'}
-          </Boton>
-        </div>
-      </form>
+            <Campo etiqueta="Nombre del producto">
+              <input className={claseInput + ' text-base'} value={nombre}
+                onChange={(e) => setNombre(e.target.value)} autoFocus />
+            </Campo>
+            <div className="grid grid-cols-2 gap-4">
+              <Campo etiqueta="Categoría">
+                <select className={claseInput} value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
+                  {categorias.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nombre}</option>
+                  ))}
+                </select>
+              </Campo>
+              {puedePrecio ? (
+                <Campo etiqueta="Precio de venta ($)">
+                  <input className={claseInput + ' text-base font-semibold'} value={precio}
+                    onChange={(e) => setPrecio(e.target.value)} inputMode="decimal" placeholder="0,00" />
+                </Campo>
+              ) : (
+                <p className="self-end pb-2 text-xs text-amber-600">
+                  No tenés permiso para poner precio: el producto se crea sin precio y no se puede vender hasta tenerlo.
+                </p>
+              )}
+            </div>
+            <MensajeError error={error} />
+            <div className="flex justify-end gap-2 pt-1">
+              <Boton variante="secundario" onClick={onCerrar}>No, volver</Boton>
+              <Boton tipo="submit" deshabilitado={guardando || !nombre.trim() || !categoriaId}>
+                {guardando ? 'Cargando…' : 'Cargar y agregar al ticket'}
+              </Boton>
+            </div>
+          </form>
+        ) : (
+          <form onSubmit={asociarExistente} className="space-y-4">
+            <p className="text-sm text-stone-500">
+              Buscá el producto que ya está cargado: le agregamos este código sin duplicarlo.
+            </p>
+            <div className="relative">
+              <Campo etiqueta="Buscar producto">
+                <input className={claseInput + ' text-base'} value={buscar}
+                  onChange={(e) => alEscribirExistente(e.target.value)} autoFocus placeholder="Nombre del producto…" />
+              </Campo>
+              {resultados.length > 0 && (
+                <ul className="absolute z-10 mt-1 w-full divide-y divide-stone-100 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-lg">
+                  {resultados.map((p) => (
+                    <li key={p.id}>
+                      <button type="button"
+                        className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm hover:bg-acento-50"
+                        onClick={() => { setElegido(p); setBuscar(p.nombre); setResultados([]); }}>
+                        <span className="font-medium text-stone-800">{p.nombre}</span>
+                        <span className="text-stone-500">{pesos(p.precio_actual_centavos)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            {elegido && (
+              <p className="rounded-lg bg-acento-50 px-3 py-2.5 text-sm text-acento-800">
+                Se asocia el código a <strong>{elegido.nombre}</strong> y va directo al ticket.
+              </p>
+            )}
+            <MensajeError error={error} />
+            <div className="flex justify-end gap-2 pt-1">
+              <Boton variante="secundario" onClick={onCerrar}>No, volver</Boton>
+              <Boton tipo="submit" deshabilitado={guardando || !elegido}>
+                {guardando ? 'Asociando…' : 'Asociar código y agregar al ticket'}
+              </Boton>
+            </div>
+          </form>
+        )}
+      </div>
     </Modal>
   );
 }

@@ -63,7 +63,7 @@ function TablaProductos() {
 
   return (
     <Tarjeta>
-      <div className="mb-4 flex items-center gap-3">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
           className={claseInput + ' max-w-sm'}
           placeholder="Buscar por nombre… (tolera errores de tipeo)"
@@ -105,7 +105,7 @@ function TablaProductos() {
               </td>
               <td className="px-3 py-3">{!p.activo && <Insignia tono="rojo">inactivo</Insignia>}</td>
               <td className="px-3 py-3 text-right">
-                <span className="invisible flex justify-end gap-1 group-hover:visible">
+                <span className="flex justify-end gap-1">
                   {puedePrecios && (
                     <Boton chico variante="fantasma" onClick={() => setPrecioDe(p)}>Precio</Boton>
                   )}
@@ -225,8 +225,10 @@ function ModalProducto({
   const [controlaVto, setControlaVto] = useState(producto?.controla_vencimiento ?? false);
   const [codigos, setCodigos] = useState(producto?.codigos_barras.join('\n') ?? '');
   const [activo, setActivo] = useState(producto?.activo ?? true);
+  const [precio, setPrecio] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const puedePrecio = tienePermiso('modificar_precios');
 
   useEffect(() => {
     api<Categoria[]>('GET', '/catalogo/categorias').then((cs) => {
@@ -238,6 +240,8 @@ function ModalProducto({
   async function guardar(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const centavos = puedePrecio && precio.trim() !== '' ? aCentavos(precio) : null;
+    if (puedePrecio && precio.trim() !== '' && centavos === null) { setError('Precio inválido'); return; }
     setGuardando(true);
     try {
       if (producto) {
@@ -257,7 +261,7 @@ function ModalProducto({
           await api('POST', `/catalogo/productos/${producto.id}/codigos-barras`, { codigo });
         }
       } else {
-        await api('POST', '/catalogo/productos', {
+        const p = await api<Producto>('POST', '/catalogo/productos', {
           nombre,
           categoria_id: categoriaId,
           markup_pct_override: markup.trim() === '' ? null : markup.replace(',', '.'),
@@ -266,6 +270,9 @@ function ModalProducto({
           controla_vencimiento: controlaVto,
           codigos_barras: codigos.split('\n').map((c) => c.trim()).filter(Boolean),
         });
+        if (centavos !== null) {
+          await api('POST', `/catalogo/productos/${p.id}/precio`, { precio_centavos: centavos });
+        }
       }
       onGuardado();
     } catch (err) {
@@ -289,6 +296,12 @@ function ModalProducto({
             ))}
           </select>
         </Campo>
+        {!producto && puedePrecio && (
+          <Campo etiqueta="Precio de venta ($)" ayuda="Opcional: se puede cargar después desde la tabla.">
+            <input className={claseInput + ' text-base font-semibold'} value={precio}
+              onChange={(e) => setPrecio(e.target.value)} inputMode="decimal" placeholder="0,00" />
+          </Campo>
+        )}
         <div className="grid grid-cols-2 gap-4">
           <Campo etiqueta="Markup % (vacío = hereda)" ayuda="Solo de la categoría directa">
             <input className={claseInput} value={markup ?? ''} onChange={(e) => setMarkup(e.target.value)} placeholder="—" />
