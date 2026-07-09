@@ -100,3 +100,4 @@ En el primer arranque sin usuarios se crea `admin` con la contraseña de
   antes/después en `/auditoria` del frontend.
 # pos
 # pos
+# pos
