@@ -1,0 +1,8 @@
+---
+import Base from '../layouts/Base.astro';
+import RecepcionDetalle from '../components/RecepcionDetalle';
+---
+
+<Base titulo="Recepción">
+  <RecepcionDetalle client:only="react" />
+</Base>

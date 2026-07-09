@@ -1,0 +1,8 @@
+---
+import Base from '../layouts/Base.astro';
+import Productos from '../components/Productos';
+---
+
+<Base titulo="Catálogo">
+  <Productos client:only="react" />
+</Base>

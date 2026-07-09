@@ -1,0 +1,8 @@
+---
+import Base from '../layouts/Base.astro';
+import Stock from '../components/Stock';
+---
+
+<Base titulo="Stock">
+  <Stock client:only="react" />
+</Base>

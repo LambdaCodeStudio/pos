@@ -1,0 +1,29 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  titulo: string;
+}
+const { titulo } = Astro.props;
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#059669" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icono.svg" type="image/svg+xml" />
+    <title>{titulo} · Punto de venta</title>
+  </head>
+  <body>
+    <slot />
+    <script>
+      // El service worker solo en producción: en dev interfiere con el HMR.
+      if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js');
+      }
+    </script>
+  </body>
+</html>

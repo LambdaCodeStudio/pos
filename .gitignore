@@ -1,0 +1,5 @@
+/target
+/.dev/
+/.env
+/.sqlx-tmp/
+*.log

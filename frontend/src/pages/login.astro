@@ -1,0 +1,8 @@
+---
+import Base from '../layouts/Base.astro';
+import Login from '../components/Login';
+---
+
+<Base titulo="Entrar">
+  <Login client:only="react" />
+</Base>

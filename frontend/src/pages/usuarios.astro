@@ -1,0 +1,8 @@
+---
+import Base from '../layouts/Base.astro';
+import Usuarios from '../components/Usuarios';
+---
+
+<Base titulo="Equipo">
+  <Usuarios client:only="react" />
+</Base>

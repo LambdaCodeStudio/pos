@@ -1,0 +1,14 @@
+{
+  "name": "Punto de venta",
+  "short_name": "POS",
+  "description": "Gestión del almacén: caja, recepciones, stock y fiado.",
+  "start_url": "/caja",
+  "display": "standalone",
+  "background_color": "#1c1917",
+  "theme_color": "#059669",
+  "lang": "es-AR",
+  "icons": [
+    { "src": "/icono.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icono-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
