@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, nombre, padre_id, markup_pct, iva_pct, activo\n        FROM catalogo.categorias\n        WHERE activo OR $1\n        ORDER BY nombre\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "padre_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "markup_pct",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "iva_pct",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "activo",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bool"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "9b7fbe66c90c5c087eb401e65f1710bd3df34f07026bf26f25c49427b39114c4"
+}

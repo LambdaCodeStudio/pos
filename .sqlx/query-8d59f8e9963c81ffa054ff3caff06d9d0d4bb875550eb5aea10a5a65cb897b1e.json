@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT nombre, categoria_id, markup_pct_override, iva_pct_override,\n               controla_vencimiento, activo\n        FROM catalogo.productos WHERE id = $1 FOR UPDATE\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "categoria_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "markup_pct_override",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 3,
+        "name": "iva_pct_override",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "controla_vencimiento",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "activo",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "8d59f8e9963c81ffa054ff3caff06d9d0d4bb875550eb5aea10a5a65cb897b1e"
+}

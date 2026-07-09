@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM identidad.rol_permisos WHERE rol_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "202a8e80ab5318af7195e64ef5c62b975effd614c4c4b23f9b31658ea8aa0806"
+}

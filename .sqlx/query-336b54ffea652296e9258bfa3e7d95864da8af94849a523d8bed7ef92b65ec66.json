@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, precio_centavos, costo_centavos, recepcion_id, usuario_id, vigente_desde\n        FROM catalogo.precios_historial\n        WHERE producto_id = $1\n        ORDER BY vigente_desde DESC\n        LIMIT 200\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "precio_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "costo_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "recepcion_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "usuario_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "vigente_desde",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "336b54ffea652296e9258bfa3e7d95864da8af94849a523d8bed7ef92b65ec66"
+}

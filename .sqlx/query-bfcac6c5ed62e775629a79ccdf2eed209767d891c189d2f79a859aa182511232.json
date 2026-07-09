@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT cantidad FROM inventario.stock_actual\n           WHERE producto_id = $1 AND deposito_id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "cantidad",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "bfcac6c5ed62e775629a79ccdf2eed209767d891c189d2f79a859aa182511232"
+}

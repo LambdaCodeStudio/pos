@@ -1,0 +1,88 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT ri.id, ri.producto_id, pr.nombre AS producto_nombre, ri.cantidad,\n               ri.costo_centavos, ri.costo_incluye_iva, ri.iva_pct, ri.markup_pct,\n               ri.precio_final_centavos, ri.vencimiento, ri.etiquetado, ri.etiquetado_en\n        FROM compras.recepcion_items ri\n        JOIN catalogo.productos pr ON pr.id = ri.producto_id\n        WHERE ri.recepcion_id = $1\n        ORDER BY ri.creado_en\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "producto_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "producto_nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "cantidad",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "costo_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "costo_incluye_iva",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "iva_pct",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 7,
+        "name": "markup_pct",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 8,
+        "name": "precio_final_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 9,
+        "name": "vencimiento",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 10,
+        "name": "etiquetado",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 11,
+        "name": "etiquetado_en",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "b478b7785502dbc842d175279c5cc04d014035edb807a39a180e45b25bbb7ee9"
+}

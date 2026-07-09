@@ -1,0 +1,61 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, nombre, telefono, documento, limite_credito_centavos,\n               saldo_actual_centavos, activo\n        FROM clientes.clientes\n        WHERE (activo OR $1)\n          AND ($2::text IS NULL OR nombre ILIKE '%' || $2 || '%')\n          AND (NOT $3 OR saldo_actual_centavos <> 0)\n        ORDER BY nombre\n        LIMIT $4\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "telefono",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "documento",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "limite_credito_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "saldo_actual_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "activo",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bool",
+        "Text",
+        "Bool",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "58b2bac00be7c893c75ed90a147f37dd52e5a232d9f1a5b3252f332a9a68f107"
+}

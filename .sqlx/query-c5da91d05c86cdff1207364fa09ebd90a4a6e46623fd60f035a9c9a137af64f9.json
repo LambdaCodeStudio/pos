@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, nombre, activo FROM identidad.usuarios WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "activo",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c5da91d05c86cdff1207364fa09ebd90a4a6e46623fd60f035a9c9a137af64f9"
+}

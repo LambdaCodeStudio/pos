@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE ventas.ventas\n        SET estado = 'anulada', anulada_en = now(), anulada_por = $2, anulacion_motivo = $3\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "265dc923303aa89bcaebf2c9e3fa17d484063a67db71b19621847cef4e640fd7"
+}

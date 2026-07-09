@@ -1,0 +1,71 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT s.id, s.usuario_id, u.nombre AS usuario_nombre, s.monto_inicial_centavos,\n               s.abierta_en, s.cerrada_en, s.monto_contado_centavos,\n               s.diferencia_arqueo_centavos,\n               COUNT(v.id) AS \"cantidad_ventas!\"\n        FROM ventas.sesiones_caja s\n        JOIN identidad.usuarios u ON u.id = s.usuario_id\n        LEFT JOIN ventas.ventas v ON v.sesion_id = s.id\n        WHERE s.cerrada_en IS NULL OR NOT $1\n        GROUP BY s.id, s.usuario_id, u.nombre, s.monto_inicial_centavos, s.abierta_en,\n                 s.cerrada_en, s.monto_contado_centavos, s.diferencia_arqueo_centavos\n        ORDER BY s.abierta_en DESC\n        LIMIT $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "usuario_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "usuario_nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "monto_inicial_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "abierta_en",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "cerrada_en",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "monto_contado_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 7,
+        "name": "diferencia_arqueo_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 8,
+        "name": "cantidad_ventas!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bool",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      null
+    ]
+  },
+  "hash": "aa8b10ac01d93fc773af09edd97009cb47e4c6f2e9bed2a2eb463793c2451460"
+}

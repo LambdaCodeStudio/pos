@@ -1,0 +1,75 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT r.id, r.proveedor_id, p.nombre AS \"proveedor_nombre?\",\n               r.estado AS \"estado: EstadoRecepcion\",\n               r.observaciones, r.creada_en, r.confirmada_en, r.completada_en\n        FROM compras.recepciones r\n        LEFT JOIN compras.proveedores p ON p.id = r.proveedor_id\n        WHERE r.id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "proveedor_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "proveedor_nombre?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "estado: EstadoRecepcion",
+        "type_info": {
+          "Custom": {
+            "name": "compras.estado_recepcion",
+            "kind": {
+              "Enum": [
+                "borrador",
+                "confirmada",
+                "completada"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "observaciones",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "creada_en",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "confirmada_en",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "completada_en",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "f420845562e922506c8dae8d4a70b203973de0d9e79e036b3748ede855240fa9"
+}

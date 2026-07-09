@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE inventario.lotes SET cantidad_actual = cantidad_actual - $2 WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Numeric"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e4479f6353024d5c202fa8333e08cd401250d52e3420fbd21bf41d2fcf838a4c"
+}

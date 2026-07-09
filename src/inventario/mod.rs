@@ -17,7 +17,7 @@ use crate::error::ErrorApi;
 pub const DEPOSITO_PRINCIPAL_ID: Uuid = Uuid::from_u128(0x01900000_0000_7000_8000_00000000d001);
 
 #[derive(sqlx::Type, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
-#[sqlx(type_name = "tipo_movimiento", rename_all = "snake_case")]
+#[sqlx(type_name = "inventario.tipo_movimiento", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum TipoMovimiento {
     EntradaRecepcion,
@@ -30,7 +30,7 @@ pub enum TipoMovimiento {
 /// Motivo del documento de ajuste. Robo, pérdida y vencimiento son motivos,
 /// no tipos de movimiento: el robo se descubre como faltante en un conteo.
 #[derive(sqlx::Type, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
-#[sqlx(type_name = "motivo_ajuste", rename_all = "snake_case")]
+#[sqlx(type_name = "inventario.motivo_ajuste", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum MotivoAjuste {
     Perdida,

@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT nombre, rol_id, activo FROM identidad.usuarios WHERE id = $1 FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "rol_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "activo",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "60eca10f868dc4be88ddd0268e0a0b1e35e071bfaccae1351a1470f887c189e3"
+}

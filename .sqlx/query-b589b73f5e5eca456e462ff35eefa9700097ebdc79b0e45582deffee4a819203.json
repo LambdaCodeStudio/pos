@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO ventas.pagos (id, venta_id, medio, monto_centavos, referencia_externa)\n            VALUES ($1, $2, $3, $4, $5)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        {
+          "Custom": {
+            "name": "ventas.medio_pago",
+            "kind": {
+              "Enum": [
+                "efectivo",
+                "tarjeta",
+                "mercado_pago",
+                "transferencia",
+                "cuenta_corriente"
+              ]
+            }
+          }
+        },
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b589b73f5e5eca456e462ff35eefa9700097ebdc79b0e45582deffee4a819203"
+}

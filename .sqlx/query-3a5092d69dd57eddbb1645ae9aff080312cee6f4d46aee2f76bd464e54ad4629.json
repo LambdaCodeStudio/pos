@@ -1,0 +1,99 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT r.id, r.proveedor_id, p.nombre AS \"proveedor_nombre?\",\n               r.estado AS \"estado: EstadoRecepcion\",\n               r.observaciones, r.creada_en, r.confirmada_en, r.completada_en,\n               COUNT(ri.id) AS \"cantidad_items!\",\n               COUNT(ri.id) FILTER (WHERE NOT ri.etiquetado) AS \"items_pendientes_etiquetar!\"\n        FROM compras.recepciones r\n        LEFT JOIN compras.proveedores p ON p.id = r.proveedor_id\n        LEFT JOIN compras.recepcion_items ri ON ri.recepcion_id = r.id\n        WHERE ($1::compras.estado_recepcion IS NULL OR r.estado = $1)\n        GROUP BY r.id, r.proveedor_id, p.nombre, r.estado, r.observaciones,\n                 r.creada_en, r.confirmada_en, r.completada_en\n        ORDER BY r.creada_en DESC\n        LIMIT $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "proveedor_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "proveedor_nombre?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "estado: EstadoRecepcion",
+        "type_info": {
+          "Custom": {
+            "name": "compras.estado_recepcion",
+            "kind": {
+              "Enum": [
+                "borrador",
+                "confirmada",
+                "completada"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "observaciones",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "creada_en",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "confirmada_en",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "completada_en",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "cantidad_items!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 9,
+        "name": "items_pendientes_etiquetar!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "compras.estado_recepcion",
+            "kind": {
+              "Enum": [
+                "borrador",
+                "confirmada",
+                "completada"
+              ]
+            }
+          }
+        },
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      null,
+      null
+    ]
+  },
+  "hash": "3a5092d69dd57eddbb1645ae9aff080312cee6f4d46aee2f76bd464e54ad4629"
+}

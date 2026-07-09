@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO inventario.stock_actual (producto_id, deposito_id, cantidad)\n        VALUES ($1, $2, $3)\n        ON CONFLICT (producto_id, deposito_id)\n        DO UPDATE SET cantidad = inventario.stock_actual.cantidad + EXCLUDED.cantidad,\n                      actualizado_en = now()\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Numeric"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2e5200a1cb12120b848d4ffcf098262f934094711005d95f48ac2807c0936e11"
+}

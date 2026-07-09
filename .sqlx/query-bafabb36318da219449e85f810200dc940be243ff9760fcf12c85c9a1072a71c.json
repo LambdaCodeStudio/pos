@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT nombre, saldo_actual_centavos FROM clientes.clientes WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "saldo_actual_centavos",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "bafabb36318da219449e85f810200dc940be243ff9760fcf12c85c9a1072a71c"
+}

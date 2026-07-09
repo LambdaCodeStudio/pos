@@ -1,0 +1,60 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT p.id, p.nombre,\n               p.unidad_de_venta AS \"unidad_de_venta: UnidadDeVenta\",\n               p.precio_actual_centavos,\n               COALESCE(p.iva_pct_override, c.iva_pct) AS \"iva_pct!\",\n               COALESCE(array_agg(cb.codigo) FILTER (WHERE cb.codigo IS NOT NULL), '{}') AS \"codigos_barras!\"\n        FROM catalogo.productos p\n        JOIN catalogo.categorias c ON c.id = p.categoria_id\n        LEFT JOIN catalogo.codigos_barras cb ON cb.producto_id = p.id\n        WHERE p.activo\n        GROUP BY p.id, p.nombre, p.unidad_de_venta, p.precio_actual_centavos,\n                 p.iva_pct_override, c.iva_pct\n        ORDER BY p.nombre\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "unidad_de_venta: UnidadDeVenta",
+        "type_info": {
+          "Custom": {
+            "name": "catalogo.unidad_de_venta",
+            "kind": {
+              "Enum": [
+                "unidad",
+                "peso"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "precio_actual_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "iva_pct!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "codigos_barras!",
+        "type_info": "TextArray"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      null,
+      null
+    ]
+  },
+  "hash": "706926f22bec3518ab7b65bf7af9d9ab1907c4ce2efe5d3cb933e7cd69894c62"
+}

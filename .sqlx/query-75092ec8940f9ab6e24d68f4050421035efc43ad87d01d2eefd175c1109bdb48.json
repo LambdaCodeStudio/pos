@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM compras.recepcion_items WHERE recepcion_id = $1 AND producto_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "75092ec8940f9ab6e24d68f4050421035efc43ad87d01d2eefd175c1109bdb48"
+}

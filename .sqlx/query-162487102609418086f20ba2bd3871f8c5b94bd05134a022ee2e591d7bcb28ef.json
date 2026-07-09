@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identidad.roles SET activo = false, actualizado_en = now()\n           WHERE id = $1 AND activo",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "162487102609418086f20ba2bd3871f8c5b94bd05134a022ee2e591d7bcb28ef"
+}

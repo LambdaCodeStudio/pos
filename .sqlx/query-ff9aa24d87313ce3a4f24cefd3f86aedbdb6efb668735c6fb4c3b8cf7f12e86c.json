@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE identidad.usuarios SET activo = false, actualizado_en = now()\n           WHERE id = $1 AND activo",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ff9aa24d87313ce3a4f24cefd3f86aedbdb6efb668735c6fb4c3b8cf7f12e86c"
+}

@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE identidad.usuarios SET\n            nombre = COALESCE($2, nombre),\n            rol_id = COALESCE($3, rol_id),\n            password_hash = COALESCE($4, password_hash),\n            pin_hash = COALESCE($5, pin_hash),\n            activo = COALESCE($6, activo),\n            actualizado_en = now()\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Text",
+        "Text",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "efc16f2e3b3dcd135ee9816b493f313baef09921534bc02b1a243b989dceb12d"
+}

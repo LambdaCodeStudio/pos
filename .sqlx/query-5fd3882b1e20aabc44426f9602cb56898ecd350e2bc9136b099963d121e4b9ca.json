@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT estado AS \"estado: EstadoVenta\" FROM ventas.ventas WHERE id = $1 FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "estado: EstadoVenta",
+        "type_info": {
+          "Custom": {
+            "name": "ventas.estado_venta",
+            "kind": {
+              "Enum": [
+                "confirmada",
+                "anulada"
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "5fd3882b1e20aabc44426f9602cb56898ecd350e2bc9136b099963d121e4b9ca"
+}

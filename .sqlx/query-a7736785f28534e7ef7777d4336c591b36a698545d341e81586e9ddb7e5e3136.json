@@ -1,0 +1,43 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT p.medio AS \"medio: MedioPago\",\n               COALESCE(SUM(p.monto_centavos), 0)::bigint AS \"total!\"\n        FROM ventas.pagos p\n        JOIN ventas.ventas v ON v.id = p.venta_id\n        WHERE v.estado = 'confirmada'\n          AND (v.vendida_en AT TIME ZONE $3)::date BETWEEN $1 AND $2\n        GROUP BY p.medio\n        ORDER BY 2 DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "medio: MedioPago",
+        "type_info": {
+          "Custom": {
+            "name": "ventas.medio_pago",
+            "kind": {
+              "Enum": [
+                "efectivo",
+                "tarjeta",
+                "mercado_pago",
+                "transferencia",
+                "cuenta_corriente"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "total!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "a7736785f28534e7ef7777d4336c591b36a698545d341e81586e9ddb7e5e3136"
+}

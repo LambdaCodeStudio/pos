@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT p.nombre, COALESCE(p.iva_pct_override, c.iva_pct) AS \"iva_pct!\"\n            FROM catalogo.productos p\n            JOIN catalogo.categorias c ON c.id = p.categoria_id\n            WHERE p.id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "iva_pct!",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "7b3095eb9f40bfa76d5f145323954415c6502d684dd5195390f3d0e5ce2cff0e"
+}

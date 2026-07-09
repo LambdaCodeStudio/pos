@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO catalogo.precios_historial\n                (id, producto_id, precio_centavos, costo_centavos, recepcion_id, usuario_id)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8",
+        "Int8",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e871ecd530bd4bb1c86a77748149c51c669e9747220908b7215fbb8e5d447937"
+}

@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO clientes.cuenta_movimientos\n            (id, cliente_id, tipo, monto_centavos, motivo, usuario_id)\n        VALUES ($1, $2, 'ajuste', $3, $4, $5)\n        ON CONFLICT (id) DO NOTHING\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "d62c231ad94dd2f8771432a9ddc50144835f741e7cc1d1f0305871f1b4031807"
+}

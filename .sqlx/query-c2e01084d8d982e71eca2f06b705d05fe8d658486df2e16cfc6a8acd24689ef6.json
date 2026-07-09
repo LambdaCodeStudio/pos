@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO ventas.sesiones_caja (id, usuario_id, monto_inicial_centavos)\n        VALUES ($1, $2, $3)\n        RETURNING abierta_en\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "abierta_en",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "c2e01084d8d982e71eca2f06b705d05fe8d658486df2e16cfc6a8acd24689ef6"
+}

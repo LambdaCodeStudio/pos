@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT COUNT(*) AS \"lotes!\"\n        FROM inventario.lotes\n        WHERE cantidad_actual > 0 AND vencimiento <= CURRENT_DATE + 30\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "lotes!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "a43140a46a89f4c0e4815ab94013c9e417ca47d28c3ec7641608f728cfb3395a"
+}

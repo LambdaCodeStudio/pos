@@ -9,7 +9,7 @@ use crate::identidad::auth::UsuarioActual;
 use crate::identidad::permisos;
 
 #[derive(sqlx::Type, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
-#[sqlx(type_name = "tipo_movimiento_cuenta", rename_all = "snake_case")]
+#[sqlx(type_name = "clientes.tipo_movimiento_cuenta", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum TipoMovimientoCuenta {
     Cargo,

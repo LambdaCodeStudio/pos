@@ -1,0 +1,81 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, sesion_id, cliente_id, total_centavos, descuento_centavos,\n               estado AS \"estado: EstadoVenta\", usuario_id, vendida_en, sincronizada_en\n        FROM ventas.ventas\n        WHERE ($1::uuid IS NULL OR sesion_id = $1)\n        ORDER BY vendida_en DESC\n        LIMIT $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "sesion_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "cliente_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "total_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "descuento_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "estado: EstadoVenta",
+        "type_info": {
+          "Custom": {
+            "name": "ventas.estado_venta",
+            "kind": {
+              "Enum": [
+                "confirmada",
+                "anulada"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "usuario_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 7,
+        "name": "vendida_en",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "sincronizada_en",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c049b5243f03ec410415d83c9b85ca02c8891956e86751644443ebf607ea5bf5"
+}

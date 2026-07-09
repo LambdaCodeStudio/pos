@@ -1,0 +1,65 @@
+services:
+  frontend:
+    build: ./frontend
+    container_name: pos_frontend
+    restart: unless-stopped
+    environment:
+      - PUERTO=8080
+      - API=http://backend:3000
+    depends_on:
+      - backend
+    networks:
+      - traefik_network
+      - pos_internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pos.rule=Host(`tiendalucas.lambdacodestudio.com.ar`)"
+      - "traefik.http.routers.pos.entrypoints=websecure"
+      - "traefik.http.routers.pos.tls.certresolver=letsencrypt"
+      - "traefik.http.services.pos.loadbalancer.server.port=8080"
+      - "traefik.http.middlewares.pos-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
+      - "traefik.http.middlewares.pos-headers.headers.customrequestheaders.X-Forwarded-Host=tiendalucas.lambdacodestudio.com.ar"
+      - "traefik.http.middlewares.pos-headers.headers.customrequestheaders.X-Forwarded-Port=443"
+      - "traefik.http.routers.pos.middlewares=pos-headers"
+
+  backend:
+    build: .
+    container_name: pos_backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgres://pos:${POS_DB_PASSWORD}@postgres:5432/pos
+      - JWT_SECRET=${POS_JWT_SECRET}
+      - PUERTO=3000
+      - ADMIN_PASSWORD_INICIAL=${POS_ADMIN_PASSWORD_INICIAL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - pos_internal
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: pos_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pos
+      POSTGRES_PASSWORD: ${POS_DB_PASSWORD}
+      POSTGRES_DB: pos
+    volumes:
+      - pos_postgres_data:/var/lib/postgresql/data
+    networks:
+      - pos_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pos"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pos_postgres_data:
+
+networks:
+  traefik_network:
+    external: true
+  pos_internal:
+    driver: bridge

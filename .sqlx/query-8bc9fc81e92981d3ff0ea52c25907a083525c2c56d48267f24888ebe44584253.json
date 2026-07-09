@@ -1,0 +1,102 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT m.id, m.producto_id, p.nombre AS producto_nombre, m.deposito_id,\n               m.lote_id, m.cantidad, m.tipo AS \"tipo: TipoMovimiento\",\n               m.recepcion_item_id, m.venta_item_id, m.ajuste_id,\n               m.usuario_id, m.creado_en\n        FROM inventario.movimientos_stock m\n        JOIN catalogo.productos p ON p.id = m.producto_id\n        WHERE ($1::uuid IS NULL OR m.producto_id = $1)\n        ORDER BY m.creado_en DESC\n        LIMIT $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "producto_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "producto_nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "deposito_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "lote_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "cantidad",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 6,
+        "name": "tipo: TipoMovimiento",
+        "type_info": {
+          "Custom": {
+            "name": "inventario.tipo_movimiento",
+            "kind": {
+              "Enum": [
+                "entrada_recepcion",
+                "salida_venta",
+                "devolucion_cliente",
+                "devolucion_proveedor",
+                "ajuste"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "recepcion_item_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 8,
+        "name": "venta_item_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 9,
+        "name": "ajuste_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 10,
+        "name": "usuario_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 11,
+        "name": "creado_en",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "8bc9fc81e92981d3ff0ea52c25907a083525c2c56d48267f24888ebe44584253"
+}

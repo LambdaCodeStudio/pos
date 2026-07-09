@@ -1,0 +1,104 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, sesion_id, cliente_id, total_centavos, descuento_centavos,\n               descuento_motivo, estado AS \"estado: EstadoVenta\", usuario_id,\n               vendida_en, sincronizada_en, anulada_en, anulada_por, anulacion_motivo\n        FROM ventas.ventas WHERE id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "sesion_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "cliente_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "total_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "descuento_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "descuento_motivo",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "estado: EstadoVenta",
+        "type_info": {
+          "Custom": {
+            "name": "ventas.estado_venta",
+            "kind": {
+              "Enum": [
+                "confirmada",
+                "anulada"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "usuario_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 8,
+        "name": "vendida_en",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "sincronizada_en",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "anulada_en",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "anulada_por",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 12,
+        "name": "anulacion_motivo",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "0f559ee186ca3e0bbcd4ee5ffb0efd9230c5d39eca4f4f7b93a330ff359e0513"
+}

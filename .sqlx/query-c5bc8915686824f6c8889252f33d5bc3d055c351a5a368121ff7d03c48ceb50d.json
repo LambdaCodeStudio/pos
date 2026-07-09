@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT nombre, cuit, telefono, precios_con_iva, condiciones_pago, activo\n           FROM compras.proveedores WHERE id = $1 FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "cuit",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "telefono",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "precios_con_iva",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "condiciones_pago",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "activo",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "c5bc8915686824f6c8889252f33d5bc3d055c351a5a368121ff7d03c48ceb50d"
+}

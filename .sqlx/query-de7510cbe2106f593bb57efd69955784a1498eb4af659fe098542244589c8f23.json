@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, abierta_en, cerrada_en FROM ventas.sesiones_caja WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "abierta_en",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "cerrada_en",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "de7510cbe2106f593bb57efd69955784a1498eb4af659fe098542244589c8f23"
+}

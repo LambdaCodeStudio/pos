@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE compras.recepciones SET estado = 'completada', completada_en = now()\n               WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "284941f7b242bc9677e8ad92904d967e04059e3213d721022ecebf0e8954ed4b"
+}

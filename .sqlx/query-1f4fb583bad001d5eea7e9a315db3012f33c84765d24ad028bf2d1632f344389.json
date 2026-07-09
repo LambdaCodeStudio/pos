@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO inventario.movimientos_stock\n                (id, producto_id, deposito_id, lote_id, cantidad, tipo, venta_item_id, usuario_id)\n            VALUES ($1, $2, $3, NULL, $4, 'salida_venta', $5, $6)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Numeric",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1f4fb583bad001d5eea7e9a315db3012f33c84765d24ad028bf2d1632f344389"
+}

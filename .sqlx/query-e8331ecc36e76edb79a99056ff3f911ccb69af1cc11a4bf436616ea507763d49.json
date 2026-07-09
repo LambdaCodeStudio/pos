@@ -1,0 +1,66 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT a.id, a.motivo AS \"motivo: MotivoAjuste\", a.observaciones, a.usuario_id,\n               a.creado_en, COUNT(m.id) AS \"cantidad_movimientos!\"\n        FROM inventario.ajustes a\n        LEFT JOIN inventario.movimientos_stock m ON m.ajuste_id = a.id\n        GROUP BY a.id, a.motivo, a.observaciones, a.usuario_id, a.creado_en\n        ORDER BY a.creado_en DESC\n        LIMIT $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "motivo: MotivoAjuste",
+        "type_info": {
+          "Custom": {
+            "name": "inventario.motivo_ajuste",
+            "kind": {
+              "Enum": [
+                "perdida",
+                "rotura",
+                "vencimiento",
+                "robo",
+                "conteo",
+                "otro"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "observaciones",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "usuario_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "creado_en",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "cantidad_movimientos!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "e8331ecc36e76edb79a99056ff3f911ccb69af1cc11a4bf436616ea507763d49"
+}

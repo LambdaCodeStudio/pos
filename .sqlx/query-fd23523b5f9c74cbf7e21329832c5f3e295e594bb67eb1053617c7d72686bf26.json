@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO identidad.roles (id, nombre, descripcion)\n        VALUES ($1, $2, $3)\n        ON CONFLICT (nombre) DO NOTHING\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "fd23523b5f9c74cbf7e21329832c5f3e295e594bb67eb1053617c7d72686bf26"
+}

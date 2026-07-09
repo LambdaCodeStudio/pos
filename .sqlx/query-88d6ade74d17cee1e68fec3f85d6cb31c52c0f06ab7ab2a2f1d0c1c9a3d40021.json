@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, medio AS \"medio: MedioPago\", monto_centavos, referencia_externa\n        FROM ventas.pagos WHERE venta_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "medio: MedioPago",
+        "type_info": {
+          "Custom": {
+            "name": "ventas.medio_pago",
+            "kind": {
+              "Enum": [
+                "efectivo",
+                "tarjeta",
+                "mercado_pago",
+                "transferencia",
+                "cuenta_corriente"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "monto_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "referencia_externa",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "88d6ade74d17cee1e68fec3f85d6cb31c52c0f06ab7ab2a2f1d0c1c9a3d40021"
+}

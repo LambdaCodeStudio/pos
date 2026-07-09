@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE catalogo.productos SET activo = false, actualizado_en = now()\n           WHERE id = $1 AND activo",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "166cd69667c12ea9737a1b0010a94e0ba0cd52f0464a7b619bca96fc8cbecedb"
+}

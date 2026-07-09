@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE clientes.clientes SET\n            nombre = COALESCE($2, nombre),\n            telefono = COALESCE($3, telefono),\n            documento = COALESCE($4, documento),\n            limite_credito_centavos = CASE WHEN $5 THEN $6 ELSE limite_credito_centavos END,\n            activo = COALESCE($7, activo),\n            actualizado_en = now()\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Int8",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c8c4e745319d8e0fdeb83d99178972674c6fcf0d43f99e955f53159fc7694511"
+}

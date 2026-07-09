@@ -1,0 +1,89 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, tipo AS \"tipo: TipoMovimientoCuenta\", monto_centavos, venta_id,\n               medio_pago AS \"medio_pago: MedioPago\", motivo, usuario_id, creado_en\n        FROM clientes.cuenta_movimientos\n        WHERE cliente_id = $1\n        ORDER BY creado_en DESC\n        LIMIT $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "tipo: TipoMovimientoCuenta",
+        "type_info": {
+          "Custom": {
+            "name": "clientes.tipo_movimiento_cuenta",
+            "kind": {
+              "Enum": [
+                "cargo",
+                "pago",
+                "ajuste"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "monto_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "venta_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "medio_pago: MedioPago",
+        "type_info": {
+          "Custom": {
+            "name": "ventas.medio_pago",
+            "kind": {
+              "Enum": [
+                "efectivo",
+                "tarjeta",
+                "mercado_pago",
+                "transferencia",
+                "cuenta_corriente"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "motivo",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "usuario_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 7,
+        "name": "creado_en",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "8b1cbdddde3bfc09fbb4b733d7d0c10d528beb299ce512abe7c87dddfa073e7d"
+}

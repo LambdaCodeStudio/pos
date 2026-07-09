@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE compras.proveedores SET activo = false, actualizado_en = now()\n           WHERE id = $1 AND activo",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "999cc63270c68218d61c9ed723c28642467c32dd3b28e10a8c5152896cee96a5"
+}

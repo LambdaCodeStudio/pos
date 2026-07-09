@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE clientes.clientes SET activo = false, actualizado_en = now()\n           WHERE id = $1 AND activo",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "25a01b6ce3ceae8d07605b9331a76089c9ed8bc940b5c34580c3c37da778344c"
+}

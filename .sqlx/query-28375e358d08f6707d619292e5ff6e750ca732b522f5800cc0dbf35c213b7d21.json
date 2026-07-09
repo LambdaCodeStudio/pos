@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT estado AS \"estado: EstadoRecepcion\" FROM compras.recepciones\n           WHERE id = $1 FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "estado: EstadoRecepcion",
+        "type_info": {
+          "Custom": {
+            "name": "compras.estado_recepcion",
+            "kind": {
+              "Enum": [
+                "borrador",
+                "confirmada",
+                "completada"
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "28375e358d08f6707d619292e5ff6e750ca732b522f5800cc0dbf35c213b7d21"
+}

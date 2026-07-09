@@ -1,0 +1,39 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT r.estado AS \"estado: EstadoRecepcion\", p.precios_con_iva AS \"precios_con_iva?\"\n        FROM compras.recepciones r\n        LEFT JOIN compras.proveedores p ON p.id = r.proveedor_id\n        WHERE r.id = $1\n        FOR UPDATE OF r\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "estado: EstadoRecepcion",
+        "type_info": {
+          "Custom": {
+            "name": "compras.estado_recepcion",
+            "kind": {
+              "Enum": [
+                "borrador",
+                "confirmada",
+                "completada"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "precios_con_iva?",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "f92b8eedf889dd4fdba5534834ebd87d90ba6be08a0dccc70efc9aa253ab9bb7"
+}

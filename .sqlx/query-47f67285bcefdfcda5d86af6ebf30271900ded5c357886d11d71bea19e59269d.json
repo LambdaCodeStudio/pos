@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, producto_id, producto_nombre, precio_unitario_centavos, cantidad,\n               iva_pct, descuento_centavos, descuento_motivo, subtotal_centavos\n        FROM ventas.venta_items WHERE venta_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "producto_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "producto_nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "precio_unitario_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "cantidad",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "iva_pct",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 6,
+        "name": "descuento_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 7,
+        "name": "descuento_motivo",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "subtotal_centavos",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "47f67285bcefdfcda5d86af6ebf30271900ded5c357886d11d71bea19e59269d"
+}

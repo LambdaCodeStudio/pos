@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT rp.permiso AS \"permiso!\"\n        FROM identidad.usuarios u\n        JOIN identidad.roles r ON r.id = u.rol_id AND r.activo\n        JOIN identidad.rol_permisos rp ON rp.rol_id = r.id\n        WHERE u.id = $1\n        UNION\n        SELECT up.permiso\n        FROM identidad.usuario_permisos up\n        WHERE up.usuario_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "permiso!",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "7b4ecfb45616f96270c1036dfb456f077a5872f6b7c8a865fa1320ce5cce18bb"
+}

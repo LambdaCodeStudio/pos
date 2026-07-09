@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT ri.id AS item_id, ri.producto_id, pr.nombre AS producto_nombre,\n               ri.cantidad, ri.precio_final_centavos,\n               COALESCE(array_agg(cb.codigo) FILTER (WHERE cb.codigo IS NOT NULL), '{}') AS \"codigos_barras!\"\n        FROM compras.recepcion_items ri\n        JOIN catalogo.productos pr ON pr.id = ri.producto_id\n        LEFT JOIN catalogo.codigos_barras cb ON cb.producto_id = pr.id\n        WHERE ri.recepcion_id = $1 AND NOT ri.etiquetado\n        GROUP BY ri.id, ri.producto_id, pr.nombre, ri.cantidad, ri.precio_final_centavos, ri.creado_en\n        ORDER BY ri.creado_en\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "item_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "producto_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "producto_nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "cantidad",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "precio_final_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "codigos_barras!",
+        "type_info": "TextArray"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "f1e657e8d2635330ba3f0246cfb7ded18cd63abc1e08946c3615a7ae321de197"
+}

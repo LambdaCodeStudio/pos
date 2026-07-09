@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT s.id, u.nombre AS usuario_nombre, s.abierta_en, s.cerrada_en,\n               s.monto_contado_centavos, s.diferencia_arqueo_centavos\n        FROM ventas.sesiones_caja s\n        JOIN identidad.usuarios u ON u.id = s.usuario_id\n        WHERE s.cerrada_en IS NOT NULL\n        ORDER BY s.cerrada_en DESC\n        LIMIT $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "usuario_nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "abierta_en",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "cerrada_en",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "monto_contado_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "diferencia_arqueo_centavos",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "647c3c38513b4c60a308832b2cb20d18bf4d37ab22258007313bd9f1faec72c1"
+}

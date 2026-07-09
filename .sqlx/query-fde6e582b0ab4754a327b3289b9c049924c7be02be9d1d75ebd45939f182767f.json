@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT saldo_actual_centavos, limite_credito_centavos, activo\n           FROM clientes.clientes WHERE id = $1 FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "saldo_actual_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "limite_credito_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "activo",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "fde6e582b0ab4754a327b3289b9c049924c7be02be9d1d75ebd45939f182767f"
+}

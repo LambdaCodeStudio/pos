@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM identidad.usuario_permisos WHERE usuario_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "541287c0b03077286906c6db5f7b41c63de43184519647c83edc09070ac696f6"
+}

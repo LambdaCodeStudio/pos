@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT monto_inicial_centavos, cerrada_en, monto_contado_centavos,\n               diferencia_arqueo_centavos\n        FROM ventas.sesiones_caja WHERE id = $1 FOR UPDATE\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "monto_inicial_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "cerrada_en",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "monto_contado_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "diferencia_arqueo_centavos",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "ed31a24d4eb06a274483f82ecf03a6b7c5ad1b67f53f9df07cf945b57ac68f94"
+}

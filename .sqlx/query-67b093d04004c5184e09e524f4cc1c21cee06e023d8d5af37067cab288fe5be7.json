@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS(SELECT 1 FROM catalogo.productos WHERE categoria_id = $1 AND activo) AS \"en_uso!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "en_uso!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "67b093d04004c5184e09e524f4cc1c21cee06e023d8d5af37067cab288fe5be7"
+}

@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO catalogo.productos\n            (id, nombre, categoria_id, markup_pct_override, iva_pct_override,\n             unidad_de_venta, controla_vencimiento)\n        VALUES ($1, $2, $3, $4, $5, $6, $7)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Numeric",
+        "Numeric",
+        {
+          "Custom": {
+            "name": "catalogo.unidad_de_venta",
+            "kind": {
+              "Enum": [
+                "unidad",
+                "peso"
+              ]
+            }
+          }
+        },
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1201774037c6a3e1abd0815d9224a98d9a67668ddace1ab4e43f4a0958f89602"
+}

@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, codigo_lote, vencimiento, cantidad_actual\n        FROM inventario.lotes\n        WHERE producto_id = $1 AND cantidad_actual > 0\n        ORDER BY vencimiento\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "codigo_lote",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "vencimiento",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 3,
+        "name": "cantidad_actual",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "6fc519a194f10b4662f1608b6158c4236051be799a3b0958b1256a77c5b60d48"
+}

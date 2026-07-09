@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT m.id, m.producto_id, p.nombre AS producto_nombre, m.lote_id, m.cantidad, m.creado_en\n        FROM inventario.movimientos_stock m\n        JOIN catalogo.productos p ON p.id = m.producto_id\n        WHERE m.ajuste_id = $1\n        ORDER BY m.creado_en\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "producto_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "producto_nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "lote_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "cantidad",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "creado_en",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "e732c9c552daafde3b494c7622570157e79f892f1a701fce8936784d534da532"
+}

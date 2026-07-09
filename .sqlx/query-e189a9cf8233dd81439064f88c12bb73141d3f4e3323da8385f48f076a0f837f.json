@@ -1,0 +1,62 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT p.id, p.nombre,\n               p.unidad_de_venta AS \"unidad_de_venta: UnidadDeVenta\",\n               p.precio_actual_centavos,\n               COALESCE(p.iva_pct_override, c.iva_pct) AS \"iva_pct!\",\n               p.activo\n        FROM catalogo.codigos_barras cb\n        JOIN catalogo.productos p ON p.id = cb.producto_id\n        JOIN catalogo.categorias c ON c.id = p.categoria_id\n        WHERE cb.codigo = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "unidad_de_venta: UnidadDeVenta",
+        "type_info": {
+          "Custom": {
+            "name": "catalogo.unidad_de_venta",
+            "kind": {
+              "Enum": [
+                "unidad",
+                "peso"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "precio_actual_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "iva_pct!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "activo",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      null,
+      false
+    ]
+  },
+  "hash": "e189a9cf8233dd81439064f88c12bb73141d3f4e3323da8385f48f076a0f837f"
+}

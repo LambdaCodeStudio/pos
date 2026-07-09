@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO catalogo.configuracion (clave, valor, actualizado_en)\n        VALUES ('redondeo_precio_centavos', $1, now())\n        ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor, actualizado_en = now()\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1c6b5880ee335262e57a60c7d47c70a972caedf9faeaa89f85c86111c03866db"
+}

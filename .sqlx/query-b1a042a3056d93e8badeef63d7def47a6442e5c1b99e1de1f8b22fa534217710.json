@@ -1,0 +1,36 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT (vendida_en AT TIME ZONE $3)::date AS \"fecha!\",\n               COALESCE(SUM(total_centavos), 0)::bigint AS \"total!\",\n               COUNT(*) AS \"tickets!\"\n        FROM ventas.ventas\n        WHERE estado = 'confirmada'\n          AND (vendida_en AT TIME ZONE $3)::date BETWEEN $1 AND $2\n        GROUP BY 1\n        ORDER BY 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "fecha!",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 1,
+        "name": "total!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "tickets!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "b1a042a3056d93e8badeef63d7def47a6442e5c1b99e1de1f8b22fa534217710"
+}

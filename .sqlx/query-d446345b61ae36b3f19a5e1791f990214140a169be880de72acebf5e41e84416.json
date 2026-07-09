@@ -1,0 +1,77 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT e.id, e.entidad, e.entidad_id,\n               COALESCE(p.nombre, c.nombre, pr.nombre, cl.nombre, us.nombre, r.nombre)\n                   AS \"entidad_nombre?\",\n               e.accion, e.usuario_id, u.nombre AS \"usuario_nombre?\",\n               e.diff, e.creado_en\n        FROM auditoria.auditoria_eventos e\n        LEFT JOIN identidad.usuarios u ON u.id = e.usuario_id\n        LEFT JOIN catalogo.productos p ON e.entidad = 'producto' AND p.id = e.entidad_id\n        LEFT JOIN catalogo.categorias c ON e.entidad = 'categoria' AND c.id = e.entidad_id\n        LEFT JOIN compras.proveedores pr ON e.entidad = 'proveedor' AND pr.id = e.entidad_id\n        LEFT JOIN clientes.clientes cl ON e.entidad = 'cliente' AND cl.id = e.entidad_id\n        LEFT JOIN identidad.usuarios us ON e.entidad = 'usuario' AND us.id = e.entidad_id\n        LEFT JOIN identidad.roles r ON e.entidad = 'rol' AND r.id = e.entidad_id\n        WHERE ($1::text IS NULL OR e.entidad = $1)\n          AND ($2::uuid IS NULL OR e.entidad_id = $2)\n          AND ($3::text IS NULL OR e.accion = $3)\n          AND ($4::uuid IS NULL OR e.usuario_id = $4)\n          AND ($5::date IS NULL OR e.creado_en >= $5::date::timestamptz)\n          AND ($6::date IS NULL OR e.creado_en < ($6::date + 1)::timestamptz)\n        ORDER BY e.creado_en DESC\n        LIMIT $7 OFFSET $8\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "entidad",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "entidad_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "entidad_nombre?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "accion",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "usuario_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "usuario_nombre?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "diff",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 8,
+        "name": "creado_en",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Date",
+        "Date",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      null,
+      false,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "d446345b61ae36b3f19a5e1791f990214140a169be880de72acebf5e41e84416"
+}

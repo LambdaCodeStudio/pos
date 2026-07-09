@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM catalogo.codigos_barras WHERE codigo = $1 RETURNING producto_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "producto_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "48397302617c94e784c7ed5c6a3b59ca4af1dbc8b8b55e139ba9d6d79c7eb28f"
+}

@@ -1,0 +1,110 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT p.id, p.nombre, p.categoria_id, c.nombre AS categoria_nombre,\n               p.markup_pct_override, p.iva_pct_override,\n               COALESCE(p.markup_pct_override, c.markup_pct) AS \"markup_pct_resuelto!\",\n               COALESCE(p.iva_pct_override, c.iva_pct) AS \"iva_pct_resuelto!\",\n               p.unidad_de_venta AS \"unidad_de_venta: UnidadDeVenta\",\n               p.controla_vencimiento, p.precio_actual_centavos, p.costo_actual_centavos,\n               p.activo,\n               COALESCE(array_agg(cb.codigo) FILTER (WHERE cb.codigo IS NOT NULL), '{}') AS \"codigos_barras!\"\n        FROM catalogo.productos p\n        JOIN catalogo.categorias c ON c.id = p.categoria_id\n        LEFT JOIN catalogo.codigos_barras cb ON cb.producto_id = p.id\n        WHERE p.id = $1\n        GROUP BY p.id, p.nombre, p.categoria_id, c.nombre, p.markup_pct_override,\n                 p.iva_pct_override, c.markup_pct, c.iva_pct, p.unidad_de_venta,\n                 p.controla_vencimiento, p.precio_actual_centavos, p.costo_actual_centavos, p.activo\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "categoria_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "categoria_nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "markup_pct_override",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "iva_pct_override",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 6,
+        "name": "markup_pct_resuelto!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 7,
+        "name": "iva_pct_resuelto!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 8,
+        "name": "unidad_de_venta: UnidadDeVenta",
+        "type_info": {
+          "Custom": {
+            "name": "catalogo.unidad_de_venta",
+            "kind": {
+              "Enum": [
+                "unidad",
+                "peso"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "controla_vencimiento",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 10,
+        "name": "precio_actual_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 11,
+        "name": "costo_actual_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 12,
+        "name": "activo",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 13,
+        "name": "codigos_barras!",
+        "type_info": "TextArray"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      null,
+      null,
+      false,
+      false,
+      true,
+      true,
+      false,
+      null
+    ]
+  },
+  "hash": "15069948d5c374eaf9851329d028a4e920c6d8903977ceec64cc46877b141e66"
+}

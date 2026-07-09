@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO compras.recepciones (id, proveedor_id, observaciones, usuario_id)\n        VALUES ($1, $2, $3, $4)\n        ON CONFLICT (id) DO NOTHING\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "921995a1c0b5ded0b89748ff713340648f04530d258c044427a8e2c1554d319b"
+}

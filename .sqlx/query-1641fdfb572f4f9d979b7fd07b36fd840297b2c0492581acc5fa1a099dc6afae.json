@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO catalogo.codigos_barras (codigo, producto_id, descripcion)\n           VALUES ($1, $2, $3)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1641fdfb572f4f9d979b7fd07b36fd840297b2c0492581acc5fa1a099dc6afae"
+}

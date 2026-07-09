@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id FROM ventas.sesiones_caja\n        WHERE usuario_id = $1 AND cerrada_en IS NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "153afe44cc2725d0801fc3a89de9abcac0224903c527ebfad8bccfe50e9f203c"
+}

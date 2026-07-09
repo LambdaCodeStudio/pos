@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT valor FROM catalogo.configuracion WHERE clave = 'redondeo_precio_centavos'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "valor",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2f915fc660174c0a2d28b9bb71ff73a3b881927c54698b620c051e3525f92052"
+}

@@ -1,0 +1,44 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT r.id, r.nombre, r.descripcion,\n               COALESCE(array_agg(rp.permiso ORDER BY rp.permiso)\n                        FILTER (WHERE rp.permiso IS NOT NULL), '{}') AS \"permisos!\",\n               r.activo\n        FROM identidad.roles r\n        LEFT JOIN identidad.rol_permisos rp ON rp.rol_id = r.id\n        GROUP BY r.id, r.nombre, r.descripcion, r.activo\n        ORDER BY r.nombre\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "descripcion",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "permisos!",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 4,
+        "name": "activo",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      null,
+      false
+    ]
+  },
+  "hash": "ee02d8c42a9ede3ec1edd00697c28af277a226e93578e966873d08bfd6b79e04"
+}

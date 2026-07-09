@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS(SELECT 1 FROM identidad.usuarios WHERE rol_id = $1 AND activo) AS \"en_uso!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "en_uso!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "69deb1ee59e749f5b8327b8f45bd6d2f6208ad3b4a122abb1c8dd2eb9ba2a603"
+}

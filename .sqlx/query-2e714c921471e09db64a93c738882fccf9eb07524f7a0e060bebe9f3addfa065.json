@@ -1,0 +1,38 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, nombre, saldo_actual_centavos, limite_credito_centavos\n        FROM clientes.clientes\n        WHERE activo AND saldo_actual_centavos > 0\n        ORDER BY saldo_actual_centavos DESC\n        LIMIT 10\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "saldo_actual_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "limite_credito_centavos",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "2e714c921471e09db64a93c738882fccf9eb07524f7a0e060bebe9f3addfa065"
+}

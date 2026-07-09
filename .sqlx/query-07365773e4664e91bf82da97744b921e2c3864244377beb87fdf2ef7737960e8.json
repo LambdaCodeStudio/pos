@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE compras.proveedores SET\n            nombre = COALESCE($2, nombre),\n            cuit = COALESCE($3, cuit),\n            telefono = COALESCE($4, telefono),\n            precios_con_iva = COALESCE($5, precios_con_iva),\n            condiciones_pago = COALESCE($6, condiciones_pago),\n            activo = COALESCE($7, activo),\n            actualizado_en = now()\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Text",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "07365773e4664e91bf82da97744b921e2c3864244377beb87fdf2ef7737960e8"
+}

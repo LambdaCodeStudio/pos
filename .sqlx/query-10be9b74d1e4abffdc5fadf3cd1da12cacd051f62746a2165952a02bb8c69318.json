@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO catalogo.categorias (id, nombre, padre_id, markup_pct, iva_pct)\n        VALUES ($1, $2, $3, $4, $5)\n        ON CONFLICT (nombre) DO NOTHING\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Numeric",
+        "Numeric"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "10be9b74d1e4abffdc5fadf3cd1da12cacd051f62746a2165952a02bb8c69318"
+}

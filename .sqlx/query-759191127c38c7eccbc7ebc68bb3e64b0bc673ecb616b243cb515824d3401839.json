@@ -1,0 +1,43 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT vi.producto_id, vi.producto_nombre,\n               SUM(vi.cantidad) AS \"unidades!\",\n               COALESCE(SUM(vi.subtotal_centavos), 0)::bigint AS \"facturado!\"\n        FROM ventas.venta_items vi\n        JOIN ventas.ventas v ON v.id = vi.venta_id\n        WHERE v.estado = 'confirmada'\n          AND (v.vendida_en AT TIME ZONE $3)::date BETWEEN $1 AND $2\n        GROUP BY vi.producto_id, vi.producto_nombre\n        ORDER BY \"facturado!\" DESC\n        LIMIT $4\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "producto_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "producto_nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "unidades!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 3,
+        "name": "facturado!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "759191127c38c7eccbc7ebc68bb3e64b0bc673ecb616b243cb515824d3401839"
+}

@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO clientes.cuenta_movimientos\n            (id, cliente_id, tipo, monto_centavos, venta_id, usuario_id)\n        VALUES ($1, $2, 'cargo', $3, $4, $5)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8d8e052800022ef992129d510b2b12ccb85e7a859744107f9c7abdb6a82a72db"
+}

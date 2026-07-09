@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO ventas.venta_items\n                (id, venta_id, producto_id, producto_nombre, precio_unitario_centavos,\n                 cantidad, iva_pct, descuento_centavos, descuento_motivo, subtotal_centavos)\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Int8",
+        "Numeric",
+        "Numeric",
+        "Int8",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bf74e11f019acc7f94e645c94c8c05d004d7a4000ba43022ef6cb1b110ffffa9"
+}

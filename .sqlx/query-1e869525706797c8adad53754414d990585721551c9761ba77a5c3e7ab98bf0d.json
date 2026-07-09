@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT u.id, u.nombre, u.rol_id, r.nombre AS rol_nombre,\n               u.pin_hash IS NOT NULL AS \"tiene_pin!\",\n               COALESCE(array_agg(up.permiso) FILTER (WHERE up.permiso IS NOT NULL), '{}') AS \"permisos_extra!\",\n               u.activo\n        FROM identidad.usuarios u\n        JOIN identidad.roles r ON r.id = u.rol_id\n        LEFT JOIN identidad.usuario_permisos up ON up.usuario_id = u.id\n        WHERE u.id = $1\n        GROUP BY u.id, u.nombre, u.rol_id, r.nombre, u.pin_hash, u.activo\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "rol_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "rol_nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "tiene_pin!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "permisos_extra!",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 6,
+        "name": "activo",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      null,
+      null,
+      false
+    ]
+  },
+  "hash": "1e869525706797c8adad53754414d990585721551c9761ba77a5c3e7ab98bf0d"
+}

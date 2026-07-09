@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, nombre, telefono, documento, limite_credito_centavos,\n               saldo_actual_centavos, activo\n        FROM clientes.clientes WHERE id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "telefono",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "documento",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "limite_credito_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "saldo_actual_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "activo",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "e25b67bb3118a7fadf499f1cd3e9ce4aff7b29b381e9c86d9bf01e0d8540cab4"
+}

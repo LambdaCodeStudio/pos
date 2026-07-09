@@ -1,0 +1,36 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT COALESCE(p.nombre, 'Sin proveedor') AS \"proveedor!\",\n               COUNT(DISTINCT r.id) AS \"recepciones!\",\n               COALESCE(SUM(ROUND(\n                   ri.cantidad * ri.costo_centavos *\n                   CASE WHEN ri.costo_incluye_iva THEN 1 ELSE (1 + ri.iva_pct / 100) END\n               )), 0)::bigint AS \"total!\"\n        FROM compras.recepcion_items ri\n        JOIN compras.recepciones r ON r.id = ri.recepcion_id\n        LEFT JOIN compras.proveedores p ON p.id = r.proveedor_id\n        WHERE r.estado <> 'borrador'\n          AND (r.confirmada_en AT TIME ZONE $3)::date BETWEEN $1 AND $2\n        GROUP BY p.nombre\n        ORDER BY \"total!\" DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "proveedor!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "recepciones!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "total!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "dd54eed46671a6774aa6ef47ee6eadb5e41fc0e4fd89a4d565ef3c56b3884c77"
+}

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT producto_id FROM catalogo.codigos_barras WHERE codigo = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "producto_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "4a35478ddd037d7d7ecd863f29e3fd7766879d693cfa86b3fedfbf05dc27e309"
+}

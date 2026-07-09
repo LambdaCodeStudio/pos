@@ -1,0 +1,60 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, motivo AS \"motivo: MotivoAjuste\", observaciones, usuario_id, creado_en\n           FROM inventario.ajustes WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "motivo: MotivoAjuste",
+        "type_info": {
+          "Custom": {
+            "name": "inventario.motivo_ajuste",
+            "kind": {
+              "Enum": [
+                "perdida",
+                "rotura",
+                "vencimiento",
+                "robo",
+                "conteo",
+                "otro"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "observaciones",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "usuario_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "creado_en",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "af89f6d2e5a3611a7b761b2096b68df4feaa981af13a7540167a6c9413d4a718"
+}

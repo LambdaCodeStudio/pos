@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT COALESCE(SUM(p.monto_centavos), 0)::bigint AS \"total!\"\n        FROM ventas.pagos p\n        JOIN ventas.ventas v ON v.id = p.venta_id\n        WHERE v.sesion_id = $1 AND v.estado = 'confirmada' AND p.medio = 'efectivo'\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "total!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "31eccb4cbe808de33c540108e3ac377be813156ebf91763f7a4d3573397db226"
+}

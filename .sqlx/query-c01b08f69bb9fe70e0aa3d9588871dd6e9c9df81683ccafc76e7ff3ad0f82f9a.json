@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO identidad.usuario_permisos (usuario_id, permiso) VALUES ($1, $2)\n               ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c01b08f69bb9fe70e0aa3d9588871dd6e9c9df81683ccafc76e7ff3ad0f82f9a"
+}

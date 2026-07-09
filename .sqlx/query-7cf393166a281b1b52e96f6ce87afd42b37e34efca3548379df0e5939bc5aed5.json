@@ -1,0 +1,38 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT COALESCE(SUM(ROUND(s.cantidad * COALESCE(p.costo_actual_centavos, 0)))\n                   FILTER (WHERE s.cantidad > 0), 0)::bigint AS \"a_costo!\",\n               COALESCE(SUM(ROUND(s.cantidad * COALESCE(p.precio_actual_centavos, 0)))\n                   FILTER (WHERE s.cantidad > 0), 0)::bigint AS \"a_precio!\",\n               COUNT(*) FILTER (WHERE s.cantidad < 0) AS \"con_stock_negativo!\",\n               COUNT(*) FILTER (WHERE s.cantidad > 0) AS \"con_stock!\"\n        FROM inventario.stock_actual s\n        JOIN catalogo.productos p ON p.id = s.producto_id\n        WHERE s.cantidad <> 0\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "a_costo!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "a_precio!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "con_stock_negativo!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "con_stock!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "7cf393166a281b1b52e96f6ce87afd42b37e34efca3548379df0e5939bc5aed5"
+}

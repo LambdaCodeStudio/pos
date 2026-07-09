@@ -1,0 +1,39 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO inventario.ajustes (id, motivo, observaciones, usuario_id)\n        VALUES ($1, $2, $3, $4)\n        ON CONFLICT (id) DO NOTHING\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        {
+          "Custom": {
+            "name": "inventario.motivo_ajuste",
+            "kind": {
+              "Enum": [
+                "perdida",
+                "rotura",
+                "vencimiento",
+                "robo",
+                "conteo",
+                "otro"
+              ]
+            }
+          }
+        },
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "587dfa0e12db6c43d8077505c95430817cd2eeab069225e91eb91bc16c4baf10"
+}

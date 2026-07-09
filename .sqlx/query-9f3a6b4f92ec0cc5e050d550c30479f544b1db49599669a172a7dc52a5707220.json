@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT nombre, telefono, documento, limite_credito_centavos, activo\n           FROM clientes.clientes WHERE id = $1 FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "telefono",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "documento",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "limite_credito_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "activo",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "9f3a6b4f92ec0cc5e050d550c30479f544b1db49599669a172a7dc52a5707220"
+}

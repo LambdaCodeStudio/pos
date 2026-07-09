@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT COALESCE(SUM(saldo_actual_centavos) FILTER (WHERE saldo_actual_centavos > 0), 0)::bigint AS \"en_la_calle!\",\n               COUNT(*) FILTER (WHERE saldo_actual_centavos > 0) AS \"deudores!\"\n        FROM clientes.clientes\n        WHERE activo\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "en_la_calle!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "deudores!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "ccba35807ce45695302b0da62cabd86984e287d73377dc33f514de1379e4c85b"
+}

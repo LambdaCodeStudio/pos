@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE identidad.roles SET\n            nombre = COALESCE($2, nombre),\n            descripcion = COALESCE($3, descripcion),\n            actualizado_en = now()\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "06d3ca4fe6d5ef9495beff795ad284f00935d2f81edf48402aad55d09ccc4154"
+}

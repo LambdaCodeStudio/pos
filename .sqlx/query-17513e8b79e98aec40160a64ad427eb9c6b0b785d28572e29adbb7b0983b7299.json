@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT nombre, padre_id, markup_pct, iva_pct FROM catalogo.categorias\n           WHERE id = $1 FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "padre_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "markup_pct",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 3,
+        "name": "iva_pct",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "17513e8b79e98aec40160a64ad427eb9c6b0b785d28572e29adbb7b0983b7299"
+}

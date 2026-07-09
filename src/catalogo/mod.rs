@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::error::ErrorApi;
 
 #[derive(sqlx::Type, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
-#[sqlx(type_name = "unidad_de_venta", rename_all = "snake_case")]
+#[sqlx(type_name = "catalogo.unidad_de_venta", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum UnidadDeVenta {
     Unidad,
