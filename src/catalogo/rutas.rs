@@ -905,7 +905,7 @@ async fn cambiar_precio_manual(
 
     let mut tx = estado.pool.begin().await?;
     let producto = sqlx::query!(
-        r#"SELECT costo_actual_centavos FROM catalogo.productos WHERE id = $1 FOR UPDATE"#,
+        r#"SELECT costo_actual_centavos, precio_actual_centavos FROM catalogo.productos WHERE id = $1 FOR UPDATE"#,
         id,
     )
     .fetch_optional(&mut *tx)
@@ -935,6 +935,15 @@ async fn cambiar_precio_manual(
         datos.precio_centavos,
     )
     .execute(&mut *tx)
+    .await?;
+
+    crate::clientes::reindexar_precio_producto(
+        &mut tx,
+        id,
+        producto.precio_actual_centavos,
+        datos.precio_centavos,
+        usuario.id,
+    )
     .await?;
 
     tx.commit().await?;

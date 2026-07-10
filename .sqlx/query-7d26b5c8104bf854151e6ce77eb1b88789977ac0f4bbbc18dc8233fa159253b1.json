@@ -1,0 +1,44 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT a.motivo AS \"motivo: MotivoAjuste\",\n               COALESCE(SUM(ROUND(-ms.cantidad * COALESCE(p.costo_actual_centavos, 0))), 0)::bigint AS \"valor_centavos!\"\n        FROM inventario.movimientos_stock ms\n        JOIN inventario.ajustes a ON a.id = ms.ajuste_id\n        JOIN catalogo.productos p ON p.id = ms.producto_id\n        WHERE ms.tipo = 'ajuste' AND ms.cantidad < 0\n          AND (ms.creado_en AT TIME ZONE $3)::date BETWEEN $1 AND $2\n        GROUP BY a.motivo\n        ORDER BY \"valor_centavos!\" DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "motivo: MotivoAjuste",
+        "type_info": {
+          "Custom": {
+            "name": "inventario.motivo_ajuste",
+            "kind": {
+              "Enum": [
+                "perdida",
+                "rotura",
+                "vencimiento",
+                "robo",
+                "conteo",
+                "otro"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "valor_centavos!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "7d26b5c8104bf854151e6ce77eb1b88789977ac0f4bbbc18dc8233fa159253b1"
+}

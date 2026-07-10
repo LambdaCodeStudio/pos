@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT COUNT(*) AS \"pendientes!\" FROM compras.recepciones WHERE estado = 'borrador'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pendientes!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "48636ee3e1bfced8bbd59fb62378ac946c7f6a4160638889e94603355fb06619"
+}

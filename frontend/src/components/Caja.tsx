@@ -1445,6 +1445,13 @@ function ModalCobro({
   }, [hayFiado, enLinea]);
 
   function cambiarFila(indice: number, cambio: Partial<FilaPago>) {
+    // El fiado es todo-o-nada por ticket (no se mezcla con otro medio): al
+    // elegir cuenta corriente en una fila, el pago pasa a ser esa única fila
+    // por el total.
+    if (cambio.medio === 'cuenta_corriente') {
+      setPagos([{ medio: 'cuenta_corriente', monto: (total / 100).toFixed(2).replace('.', ',') }]);
+      return;
+    }
     setPagos((prev) => prev.map((p, i) => (i === indice ? { ...p, ...cambio } : p)));
   }
 
@@ -1519,10 +1526,17 @@ function ModalCobro({
           </div>
         ))}
 
-        <button className="text-sm font-medium text-acento-700 hover:underline"
-          onClick={() => setPagos((prev) => [...prev, { medio: 'tarjeta', monto: '' }])}>
-          + Dividir el pago
-        </button>
+        {!hayFiado && (
+          <button className="text-sm font-medium text-acento-700 hover:underline"
+            onClick={() => setPagos((prev) => [...prev, { medio: 'tarjeta', monto: '' }])}>
+            + Dividir el pago
+          </button>
+        )}
+        {hayFiado && (
+          <p className="text-xs text-stone-400">
+            El fiado va por el ticket completo: para cobrar una parte en efectivo, hacé dos tickets.
+          </p>
+        )}
 
         {hayFiado && enLinea && (
           <Campo etiqueta="Cliente (obligatorio para fiado)">

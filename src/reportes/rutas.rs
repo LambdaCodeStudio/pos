@@ -9,6 +9,7 @@ use crate::error::ErrorApi;
 use crate::estado::Estado;
 use crate::identidad::auth::UsuarioActual;
 use crate::identidad::permisos;
+use crate::inventario::MotivoAjuste;
 use crate::reportes::ZONA_HORARIA;
 use crate::ventas::MedioPago;
 
@@ -16,6 +17,9 @@ pub fn router() -> Router<Estado> {
     Router::new()
         .route("/ventas-resumen", get(ventas_resumen))
         .route("/top-productos", get(top_productos))
+        .route("/productos-sin-movimiento", get(productos_sin_movimiento))
+        .route("/ventas-por-vendedor", get(ventas_por_vendedor))
+        .route("/mermas", get(mermas))
         .route("/fiado", get(fiado))
         .route("/inventario", get(inventario))
         .route("/arqueos", get(arqueos))
@@ -71,9 +75,9 @@ async fn ventas_resumen(
     .fetch_one(&estado.pool)
     .await?;
 
-    let anuladas = sqlx::query_scalar!(
+    let anuladas = sqlx::query!(
         r#"
-        SELECT COUNT(*) AS "anuladas!"
+        SELECT COUNT(*) AS "cantidad!", COALESCE(SUM(total_centavos), 0)::bigint AS "total_centavos!"
         FROM ventas.ventas
         WHERE estado = 'anulada'
           AND (vendida_en AT TIME ZONE $3)::date BETWEEN $1 AND $2
@@ -84,6 +88,50 @@ async fn ventas_resumen(
     )
     .fetch_one(&estado.pool)
     .await?;
+
+    let anuladas_por_motivo = sqlx::query!(
+        r#"
+        SELECT COALESCE(anulacion_motivo, 'Sin motivo') AS "motivo!",
+               COUNT(*) AS "cantidad!",
+               COALESCE(SUM(total_centavos), 0)::bigint AS "total_centavos!"
+        FROM ventas.ventas
+        WHERE estado = 'anulada'
+          AND (vendida_en AT TIME ZONE $3)::date BETWEEN $1 AND $2
+        GROUP BY 1
+        ORDER BY "total_centavos!" DESC
+        "#,
+        desde,
+        hasta,
+        ZONA_HORARIA,
+    )
+    .fetch_all(&estado.pool)
+    .await?;
+
+    // Costo de lo vendido, a costo actual (misma aproximación que "Inventario":
+    // no hay snapshot de costo en venta_items, así que el margen histórico se
+    // recalcula con el costo de hoy, no el vigente al momento de la venta).
+    let costo = sqlx::query_scalar!(
+        r#"
+        SELECT COALESCE(SUM(ROUND(vi.cantidad * COALESCE(p.costo_actual_centavos, 0))), 0)::bigint AS "costo!"
+        FROM ventas.venta_items vi
+        JOIN ventas.ventas v ON v.id = vi.venta_id
+        JOIN catalogo.productos p ON p.id = vi.producto_id
+        WHERE v.estado = 'confirmada'
+          AND (v.vendida_en AT TIME ZONE $3)::date BETWEEN $1 AND $2
+        "#,
+        desde,
+        hasta,
+        ZONA_HORARIA,
+    )
+    .fetch_one(&estado.pool)
+    .await?;
+
+    let margen_centavos = totales.facturado - costo;
+    let margen_pct = if totales.facturado > 0 {
+        (margen_centavos as f64 / totales.facturado as f64) * 100.0
+    } else {
+        0.0
+    };
 
     let por_dia = sqlx::query!(
         r#"
@@ -134,7 +182,14 @@ async fn ventas_resumen(
         "tickets": totales.tickets,
         "ticket_promedio_centavos": ticket_promedio,
         "descuentos_centavos": totales.descuentos,
-        "anuladas": anuladas,
+        "costo_vendido_centavos": costo,
+        "margen_centavos": margen_centavos,
+        "margen_pct": margen_pct,
+        "anuladas": anuladas.cantidad,
+        "anuladas_centavos": anuladas.total_centavos,
+        "anuladas_por_motivo": anuladas_por_motivo.into_iter().map(|a| json!({
+            "motivo": a.motivo, "cantidad": a.cantidad, "total_centavos": a.total_centavos,
+        })).collect::<Vec<_>>(),
         "por_dia": por_dia.into_iter().map(|d| json!({
             "fecha": d.fecha, "total_centavos": d.total, "tickets": d.tickets,
         })).collect::<Vec<_>>(),
@@ -180,6 +235,129 @@ async fn top_productos(
         "unidades": f.unidades,
         "facturado_centavos": f.facturado,
     })).collect::<Vec<_>>())))
+}
+
+/// Contracara del top de ventas: productos con stock que no se movieron en el
+/// período. Señal de capital inmovilizado para decisiones de compra/precio.
+async fn productos_sin_movimiento(
+    State(estado): State<Estado>,
+    usuario: UsuarioActual,
+    Query(rango): Query<RangoFechas>,
+) -> Result<Json<serde_json::Value>, ErrorApi> {
+    usuario.exigir(permisos::VER_REPORTES)?;
+    let (desde, hasta) = rango.resolver();
+    let limite = rango.limite.unwrap_or(15).clamp(1, 50);
+
+    let filas = sqlx::query!(
+        r#"
+        SELECT p.id, p.nombre, s.cantidad AS "stock!",
+               COALESCE(ROUND(s.cantidad * COALESCE(p.costo_actual_centavos, 0)), 0)::bigint AS "valor_centavos!"
+        FROM catalogo.productos p
+        JOIN inventario.stock_actual s ON s.producto_id = p.id
+        WHERE p.activo AND s.cantidad > 0
+          AND NOT EXISTS (
+              SELECT 1 FROM ventas.venta_items vi
+              JOIN ventas.ventas v ON v.id = vi.venta_id
+              WHERE vi.producto_id = p.id AND v.estado = 'confirmada'
+                AND (v.vendida_en AT TIME ZONE $3)::date BETWEEN $1 AND $2
+          )
+        ORDER BY "valor_centavos!" DESC
+        LIMIT $4
+        "#,
+        desde,
+        hasta,
+        ZONA_HORARIA,
+        limite,
+    )
+    .fetch_all(&estado.pool)
+    .await?;
+
+    Ok(Json(json!(filas.into_iter().map(|f| json!({
+        "producto_id": f.id,
+        "nombre": f.nombre,
+        "stock": f.stock,
+        "valor_centavos": f.valor_centavos,
+    })).collect::<Vec<_>>())))
+}
+
+/// Ranking de ventas/anulaciones/descuentos por operador: gestión de turnos y
+/// señal de uso anómalo de permisos como anular_venta o aplicar_descuento.
+async fn ventas_por_vendedor(
+    State(estado): State<Estado>,
+    usuario: UsuarioActual,
+    Query(rango): Query<RangoFechas>,
+) -> Result<Json<serde_json::Value>, ErrorApi> {
+    usuario.exigir(permisos::VER_REPORTES)?;
+    let (desde, hasta) = rango.resolver();
+
+    let filas = sqlx::query!(
+        r#"
+        SELECT u.id, u.nombre,
+               COUNT(*) FILTER (WHERE v.estado = 'confirmada') AS "tickets!",
+               COALESCE(SUM(v.total_centavos) FILTER (WHERE v.estado = 'confirmada'), 0)::bigint AS "facturado!",
+               COALESCE(SUM(v.descuento_centavos) FILTER (WHERE v.estado = 'confirmada'), 0)::bigint AS "descuentos!",
+               COUNT(*) FILTER (WHERE v.estado = 'anulada') AS "anuladas!"
+        FROM ventas.ventas v
+        JOIN identidad.usuarios u ON u.id = v.usuario_id
+        WHERE (v.vendida_en AT TIME ZONE $3)::date BETWEEN $1 AND $2
+        GROUP BY u.id, u.nombre
+        ORDER BY "facturado!" DESC
+        "#,
+        desde,
+        hasta,
+        ZONA_HORARIA,
+    )
+    .fetch_all(&estado.pool)
+    .await?;
+
+    Ok(Json(json!(filas.into_iter().map(|f| json!({
+        "usuario_id": f.id,
+        "nombre": f.nombre,
+        "tickets": f.tickets,
+        "facturado_centavos": f.facturado,
+        "descuentos_centavos": f.descuentos,
+        "anuladas": f.anuladas,
+    })).collect::<Vec<_>>())))
+}
+
+/// Mermas: valor a costo de los ajustes negativos de stock (pérdida, rotura,
+/// vencimiento, robo, conteo), agrupado por motivo. Los ajustes positivos
+/// (sobrante de conteo) no son merma y quedan afuera.
+async fn mermas(
+    State(estado): State<Estado>,
+    usuario: UsuarioActual,
+    Query(rango): Query<RangoFechas>,
+) -> Result<Json<serde_json::Value>, ErrorApi> {
+    usuario.exigir(permisos::VER_REPORTES)?;
+    let (desde, hasta) = rango.resolver();
+
+    let filas = sqlx::query!(
+        r#"
+        SELECT a.motivo AS "motivo: MotivoAjuste",
+               COALESCE(SUM(ROUND(-ms.cantidad * COALESCE(p.costo_actual_centavos, 0))), 0)::bigint AS "valor_centavos!"
+        FROM inventario.movimientos_stock ms
+        JOIN inventario.ajustes a ON a.id = ms.ajuste_id
+        JOIN catalogo.productos p ON p.id = ms.producto_id
+        WHERE ms.tipo = 'ajuste' AND ms.cantidad < 0
+          AND (ms.creado_en AT TIME ZONE $3)::date BETWEEN $1 AND $2
+        GROUP BY a.motivo
+        ORDER BY "valor_centavos!" DESC
+        "#,
+        desde,
+        hasta,
+        ZONA_HORARIA,
+    )
+    .fetch_all(&estado.pool)
+    .await?;
+
+    let total: i64 = filas.iter().map(|f| f.valor_centavos).sum();
+
+    Ok(Json(json!({
+        "total_centavos": total,
+        "por_motivo": filas.into_iter().map(|f| json!({
+            "motivo": f.motivo, "valor_centavos": f.valor_centavos,
+        })).collect::<Vec<_>>(),
+    })))
 }
 
 async fn fiado(
@@ -257,12 +435,35 @@ async fn inventario(
     .fetch_one(&estado.pool)
     .await?;
 
+    // Detalle accionable: qué producto, cuánto y con qué urgencia, no solo el
+    // conteo (que no alcanza para decidir qué liquidar primero).
+    let proximos_vencimientos = sqlx::query!(
+        r#"
+        SELECT l.id, p.nombre AS producto_nombre, l.vencimiento, l.cantidad_actual AS "cantidad!",
+               (l.vencimiento - CURRENT_DATE) AS "dias_restantes!"
+        FROM inventario.lotes l
+        JOIN catalogo.productos p ON p.id = l.producto_id
+        WHERE l.cantidad_actual > 0 AND l.vencimiento <= CURRENT_DATE + 30
+        ORDER BY l.vencimiento ASC
+        LIMIT 15
+        "#,
+    )
+    .fetch_all(&estado.pool)
+    .await?;
+
     Ok(Json(json!({
         "valor_a_costo_centavos": valor.a_costo,
         "valor_a_precio_centavos": valor.a_precio,
         "productos_con_stock": valor.con_stock,
         "productos_con_stock_negativo": valor.con_stock_negativo,
         "lotes_por_vencer_30_dias": por_vencer,
+        "proximos_vencimientos": proximos_vencimientos.into_iter().map(|l| json!({
+            "lote_id": l.id,
+            "producto_nombre": l.producto_nombre,
+            "vencimiento": l.vencimiento,
+            "cantidad": l.cantidad,
+            "dias_restantes": l.dias_restantes,
+        })).collect::<Vec<_>>(),
     })))
 }
 
@@ -289,14 +490,26 @@ async fn arqueos(
     .fetch_all(&estado.pool)
     .await?;
 
-    Ok(Json(json!(filas.into_iter().map(|s| json!({
-        "sesion_id": s.id,
-        "usuario_nombre": s.usuario_nombre,
-        "abierta_en": s.abierta_en,
-        "cerrada_en": s.cerrada_en,
-        "contado_centavos": s.monto_contado_centavos,
-        "diferencia_centavos": s.diferencia_arqueo_centavos,
-    })).collect::<Vec<_>>())))
+    // Acumulado de las sesiones listadas: una diferencia aislada es un evento,
+    // un acumulado sostenido es una señal de un problema de manejo de caja.
+    let total_diferencia: i64 = filas.iter().map(|s| s.diferencia_arqueo_centavos.unwrap_or(0)).sum();
+    let con_diferencia = filas
+        .iter()
+        .filter(|s| s.diferencia_arqueo_centavos.unwrap_or(0) != 0)
+        .count();
+
+    Ok(Json(json!({
+        "total_diferencia_centavos": total_diferencia,
+        "con_diferencia": con_diferencia,
+        "sesiones": filas.into_iter().map(|s| json!({
+            "sesion_id": s.id,
+            "usuario_nombre": s.usuario_nombre,
+            "abierta_en": s.abierta_en,
+            "cerrada_en": s.cerrada_en,
+            "contado_centavos": s.monto_contado_centavos,
+            "diferencia_centavos": s.diferencia_arqueo_centavos,
+        })).collect::<Vec<_>>(),
+    })))
 }
 
 async fn compras_resumen(
@@ -333,10 +546,19 @@ async fn compras_resumen(
 
     let total: i64 = filas.iter().map(|f| f.total).sum();
 
+    // Backlog operativo: recepciones cargadas pero nunca confirmadas, que si
+    // no se muestran acá quedan fuera del radar de cualquiera.
+    let pendientes_confirmar = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) AS "pendientes!" FROM compras.recepciones WHERE estado = 'borrador'"#,
+    )
+    .fetch_one(&estado.pool)
+    .await?;
+
     Ok(Json(json!({
         "desde": desde,
         "hasta": hasta,
         "total_comprado_centavos": total,
+        "pendientes_confirmar": pendientes_confirmar,
         "por_proveedor": filas.into_iter().map(|f| json!({
             "proveedor": f.proveedor,
             "recepciones": f.recepciones,

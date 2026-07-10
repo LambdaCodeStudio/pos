@@ -319,6 +319,45 @@ async fn movimientos_de_cuenta(
     .fetch_all(&estado.pool)
     .await?;
 
+    // Detalle de productos por renglón de cargo (fase 5: fiado indexado a
+    // producto), para mostrar qué se fió y cuánto de eso sigue pendiente.
+    let cargo_ids: Vec<Uuid> = movimientos
+        .iter()
+        .filter(|m| m.tipo == TipoMovimientoCuenta::Cargo)
+        .map(|m| m.id)
+        .collect();
+    let renglones = sqlx::query!(
+        r#"
+        SELECT movimiento_id, producto_id, producto_nombre, cantidad, cantidad_pendiente
+        FROM clientes.cargo_items
+        WHERE movimiento_id = ANY($1)
+        ORDER BY producto_nombre
+        "#,
+        &cargo_ids,
+    )
+    .fetch_all(&estado.pool)
+    .await?;
+
+    let mut items_por_movimiento: std::collections::HashMap<Uuid, Vec<serde_json::Value>> =
+        std::collections::HashMap::new();
+    for r in renglones {
+        items_por_movimiento.entry(r.movimiento_id).or_default().push(json!({
+            "producto_id": r.producto_id,
+            "producto_nombre": r.producto_nombre,
+            "cantidad": r.cantidad,
+            "cantidad_pendiente": r.cantidad_pendiente,
+        }));
+    }
+
+    let movimientos: Vec<serde_json::Value> = movimientos
+        .into_iter()
+        .map(|m| {
+            let mut valor = serde_json::to_value(&m).expect("MovimientoCuenta serializa");
+            valor["items"] = json!(items_por_movimiento.remove(&m.id).unwrap_or_default());
+            valor
+        })
+        .collect();
+
     Ok(Json(json!({
         "cliente_id": id,
         "cliente_nombre": cliente.nombre,
@@ -394,6 +433,8 @@ async fn registrar_pago(
     }
 
     actualizar_saldo(&mut tx, cliente_id, -datos.monto_centavos).await?;
+    crate::clientes::aplicar_pago_fifo(&mut tx, cliente_id, movimiento_id, datos.monto_centavos)
+        .await?;
     tx.commit().await?;
 
     Ok(Json(json!({
@@ -460,6 +501,17 @@ async fn registrar_ajuste(
     }
 
     actualizar_saldo(&mut tx, cliente_id, datos.monto_centavos).await?;
+    // Un ajuste negativo condona deuda: consume renglones pendientes por
+    // FIFO igual que un pago, para que dejen de revalorizarse.
+    if datos.monto_centavos < 0 {
+        crate::clientes::aplicar_condonacion_fifo(
+            &mut tx,
+            cliente_id,
+            movimiento_id,
+            -datos.monto_centavos,
+        )
+        .await?;
+    }
     tx.commit().await?;
     Ok(Json(json!({ "id": movimiento_id, "ya_estaba_aplicado": false })))
 }

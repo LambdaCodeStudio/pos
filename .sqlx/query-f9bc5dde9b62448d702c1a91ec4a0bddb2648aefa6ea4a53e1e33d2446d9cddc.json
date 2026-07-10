@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT COUNT(*) AS \"cantidad!\", COALESCE(SUM(total_centavos), 0)::bigint AS \"total_centavos!\"\n        FROM ventas.ventas\n        WHERE estado = 'anulada'\n          AND (vendida_en AT TIME ZONE $3)::date BETWEEN $1 AND $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "cantidad!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "total_centavos!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "f9bc5dde9b62448d702c1a91ec4a0bddb2648aefa6ea4a53e1e33d2446d9cddc"
+}

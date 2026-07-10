@@ -42,6 +42,7 @@ function TablaProductos() {
   const [buscar, setBuscar] = useState('');
   const [editando, setEditando] = useState<Producto | 'nuevo' | null>(null);
   const [precioDe, setPrecioDe] = useState<Producto | null>(null);
+  const [eliminando, setEliminando] = useState<Producto | null>(null);
   const [configurandoRedondeo, setConfigurandoRedondeo] = useState(false);
   const temporizador = useRef<number | undefined>(undefined);
 
@@ -112,6 +113,9 @@ function TablaProductos() {
                   {puedeGestionar && (
                     <Boton chico variante="fantasma" onClick={() => setEditando(p)}>Editar</Boton>
                   )}
+                  {puedeGestionar && p.activo && (
+                    <Boton chico variante="peligro" onClick={() => setEliminando(p)}>Eliminar</Boton>
+                  )}
                 </span>
               </td>
             </tr>
@@ -134,7 +138,57 @@ function TablaProductos() {
         />
       )}
       {configurandoRedondeo && <ModalRedondeo onCerrar={() => setConfigurandoRedondeo(false)} />}
+      {eliminando && (
+        <ModalEliminarProducto
+          producto={eliminando}
+          onCerrar={() => setEliminando(null)}
+          onEliminado={() => { setEliminando(null); cargar(buscar); }}
+        />
+      )}
     </Tarjeta>
+  );
+}
+
+function ModalEliminarProducto({
+  producto,
+  onCerrar,
+  onEliminado,
+}: {
+  producto: Producto;
+  onCerrar: () => void;
+  onEliminado: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [eliminando, setEliminando] = useState(false);
+
+  async function confirmar() {
+    setError(null);
+    setEliminando(true);
+    try {
+      await api('DELETE', `/catalogo/productos/${producto.id}`);
+      onEliminado();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo eliminar el producto.');
+      setEliminando(false);
+    }
+  }
+
+  return (
+    <Modal abierto titulo="Eliminar producto" onCerrar={onCerrar} ancho="max-w-sm">
+      <div className="space-y-4">
+        <p className="text-sm text-stone-600">
+          ¿Eliminar <strong className="text-stone-800">{producto.nombre}</strong>? Deja de listarse y
+          venderse; su historial de precios y ventas se conserva.
+        </p>
+        <MensajeError error={error} />
+        <div className="flex justify-end gap-2">
+          <Boton variante="secundario" onClick={onCerrar} deshabilitado={eliminando}>Cancelar</Boton>
+          <Boton variante="peligro" onClick={confirmar} deshabilitado={eliminando}>
+            {eliminando ? 'Eliminando…' : 'Eliminar'}
+          </Boton>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -207,41 +261,77 @@ function ModalRedondeo({ onCerrar }: { onCerrar: () => void }) {
   );
 }
 
-function ModalProducto({
+export function ModalProducto({
   producto,
+  nombreInicial,
+  codigoInicial,
   onCerrar,
   onGuardado,
 }: {
   producto: Producto | null;
+  /** Precarga desde otras pantallas (p. ej. "crear producto nuevo" en recepciones). */
+  nombreInicial?: string;
+  codigoInicial?: string;
   onCerrar: () => void;
-  onGuardado: () => void;
+  /** En alta, recibe el producto recién creado para que quien abrió el modal pueda usarlo. */
+  onGuardado: (producto?: Producto) => void;
 }) {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [nombre, setNombre] = useState(producto?.nombre ?? '');
+  const [nombre, setNombre] = useState(producto?.nombre ?? nombreInicial ?? '');
   const [categoriaId, setCategoriaId] = useState(producto?.categoria_id ?? '');
   const [markup, setMarkup] = useState(producto?.markup_pct_override ?? '');
   const [iva, setIva] = useState(producto?.iva_pct_override ?? '');
   const [unidad, setUnidad] = useState(producto?.unidad_de_venta ?? 'unidad');
   const [controlaVto, setControlaVto] = useState(producto?.controla_vencimiento ?? false);
-  const [codigos, setCodigos] = useState(producto?.codigos_barras.join('\n') ?? '');
+  const [codigos, setCodigos] = useState(producto?.codigos_barras.join('\n') ?? codigoInicial ?? '');
   const [activo, setActivo] = useState(producto?.activo ?? true);
-  const [precio, setPrecio] = useState('');
+  const [precioBruto, setPrecioBruto] = useState('');
+  const [redondeo, setRedondeo] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const puedePrecio = tienePermiso('modificar_precios');
+
+  // Markup/IVA efectivos para calcular el precio: el override del formulario
+  // si está cargado, si no el default de la categoría elegida.
+  const categoriaSeleccionada = categorias.find((c) => c.id === categoriaId);
+  const ivaEfectivo = iva.trim() !== ''
+    ? parseFloat(String(iva).replace(',', '.'))
+    : parseFloat(categoriaSeleccionada?.iva_pct ?? '0');
+  const markupEfectivo = markup.trim() !== ''
+    ? parseFloat(String(markup).replace(',', '.'))
+    : parseFloat(categoriaSeleccionada?.markup_pct ?? '0');
+
+  // Mismo cálculo que el backend en recepciones (compras/precio.rs):
+  // base = bruto × (1 + iva/100); final = base × (1 + markup/100), con el
+  // mismo redondeo comercial configurado en "Redondeo de precios".
+  const brutoCentavos = aCentavos(precioBruto);
+  const precioConIvaCentavos = brutoCentavos !== null && !Number.isNaN(ivaEfectivo)
+    ? Math.round(brutoCentavos * (1 + ivaEfectivo / 100))
+    : null;
+  const precioFinalCentavos = brutoCentavos !== null && !Number.isNaN(ivaEfectivo) && !Number.isNaN(markupEfectivo)
+    ? redondearComercial(Math.round(brutoCentavos * (1 + ivaEfectivo / 100) * (1 + markupEfectivo / 100)), redondeo)
+    : null;
 
   useEffect(() => {
     api<Categoria[]>('GET', '/catalogo/categorias').then((cs) => {
       setCategorias(cs);
       if (!producto && cs.length > 0) setCategoriaId((actual) => actual || cs[0].id);
     });
+    if (!producto) {
+      api<ConfiguracionNegocio>('GET', '/catalogo/configuracion')
+        .then((c) => setRedondeo(c.redondeo_precio_centavos))
+        .catch(() => {});
+    }
   }, [producto]);
 
   async function guardar(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const centavos = puedePrecio && precio.trim() !== '' ? aCentavos(precio) : null;
-    if (puedePrecio && precio.trim() !== '' && centavos === null) { setError('Precio inválido'); return; }
+    if (puedePrecio && precioBruto.trim() !== '' && brutoCentavos === null) {
+      setError('Precio bruto inválido');
+      return;
+    }
+    const centavos = puedePrecio && precioBruto.trim() !== '' ? precioFinalCentavos : null;
     setGuardando(true);
     try {
       if (producto) {
@@ -273,6 +363,8 @@ function ModalProducto({
         if (centavos !== null) {
           await api('POST', `/catalogo/productos/${p.id}/precio`, { precio_centavos: centavos });
         }
+        onGuardado(p);
+        return;
       }
       onGuardado();
     } catch (err) {
@@ -296,12 +388,6 @@ function ModalProducto({
             ))}
           </select>
         </Campo>
-        {!producto && puedePrecio && (
-          <Campo etiqueta="Precio de venta ($)" ayuda="Opcional: se puede cargar después desde la tabla.">
-            <input className={claseInput + ' text-base font-semibold'} value={precio}
-              onChange={(e) => setPrecio(e.target.value)} inputMode="decimal" placeholder="0,00" />
-          </Campo>
-        )}
         <div className="grid grid-cols-2 gap-4">
           <Campo etiqueta="Markup % (vacío = hereda)" ayuda="Solo de la categoría directa">
             <input className={claseInput} value={markup ?? ''} onChange={(e) => setMarkup(e.target.value)} placeholder="—" />
@@ -310,6 +396,21 @@ function ModalProducto({
             <input className={claseInput} value={iva ?? ''} onChange={(e) => setIva(e.target.value)} placeholder="—" />
           </Campo>
         </div>
+        {!producto && puedePrecio && (
+          <div className="grid grid-cols-3 gap-4">
+            <Campo etiqueta="Precio bruto ($)" ayuda="Sin IVA ni utilidad">
+              <input className={claseInput + ' text-base font-semibold'} value={precioBruto}
+                onChange={(e) => setPrecioBruto(e.target.value)} inputMode="decimal" placeholder="0,00" />
+            </Campo>
+            <Campo etiqueta={`Con IVA (${Number.isFinite(ivaEfectivo) ? ivaEfectivo : 0}%)`}>
+              <p className={claseInput + ' bg-stone-50 text-stone-500'}>{pesos(precioConIvaCentavos)}</p>
+            </Campo>
+            <Campo etiqueta={`Precio final (markup ${Number.isFinite(markupEfectivo) ? markupEfectivo : 0}%)`}
+              ayuda={redondeo > 1 ? `Redondeado a ${pesos(redondeo)}` : undefined}>
+              <p className={claseInput + ' bg-stone-50 font-semibold text-stone-800'}>{pesos(precioFinalCentavos)}</p>
+            </Campo>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-4">
           <Campo etiqueta="Unidad de venta">
             <select className={claseInput} value={unidad} onChange={(e) => setUnidad(e.target.value as 'unidad' | 'peso')}>

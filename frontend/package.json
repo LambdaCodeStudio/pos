@@ -12,6 +12,7 @@
   "dependencies": {
     "@astrojs/react": "^4.2.0",
     "@tailwindcss/vite": "^4.1.0",
+    "@zxing/browser": "^0.2.1",
     "astro": "^5.8.0",
     "idb": "^8.0.3",
     "react": "^19.1.0",

@@ -1,0 +1,54 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT u.id, u.nombre,\n               COUNT(*) FILTER (WHERE v.estado = 'confirmada') AS \"tickets!\",\n               COALESCE(SUM(v.total_centavos) FILTER (WHERE v.estado = 'confirmada'), 0)::bigint AS \"facturado!\",\n               COALESCE(SUM(v.descuento_centavos) FILTER (WHERE v.estado = 'confirmada'), 0)::bigint AS \"descuentos!\",\n               COUNT(*) FILTER (WHERE v.estado = 'anulada') AS \"anuladas!\"\n        FROM ventas.ventas v\n        JOIN identidad.usuarios u ON u.id = v.usuario_id\n        WHERE (v.vendida_en AT TIME ZONE $3)::date BETWEEN $1 AND $2\n        GROUP BY u.id, u.nombre\n        ORDER BY \"facturado!\" DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "tickets!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "facturado!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "descuentos!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "anuladas!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "1594b8cb11a47bdd5dbd987c63256c42b184ee96344c91e29015b8d0a4704cef"
+}

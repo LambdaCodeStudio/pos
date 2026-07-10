@@ -1,0 +1,44 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT l.id, p.nombre AS producto_nombre, l.vencimiento, l.cantidad_actual AS \"cantidad!\",\n               (l.vencimiento - CURRENT_DATE) AS \"dias_restantes!\"\n        FROM inventario.lotes l\n        JOIN catalogo.productos p ON p.id = l.producto_id\n        WHERE l.cantidad_actual > 0 AND l.vencimiento <= CURRENT_DATE + 30\n        ORDER BY l.vencimiento ASC\n        LIMIT 15\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "producto_nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "vencimiento",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 3,
+        "name": "cantidad!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "dias_restantes!",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "b7ce9c4430bfecea80e24a751306bbeabe73194757ad5f449691c8b2c7aecfd5"
+}

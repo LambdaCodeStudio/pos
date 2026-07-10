@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE clientes.cargo_items SET cantidad_pendiente = $2 WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Numeric"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6dd17abeb720958b5cb25d3c04be9ee057faed4504fe743ed4ca2deaffcfffeb"
+}

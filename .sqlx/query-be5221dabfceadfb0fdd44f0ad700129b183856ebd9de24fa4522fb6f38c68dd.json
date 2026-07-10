@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT ci.id, ci.cantidad_pendiente, p.precio_actual_centavos\n        FROM clientes.cargo_items ci\n        JOIN catalogo.productos p ON p.id = ci.producto_id\n        WHERE ci.cliente_id = $1 AND ci.cantidad_pendiente > 0\n        ORDER BY ci.creado_en\n        FOR UPDATE OF ci\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "cantidad_pendiente",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 2,
+        "name": "precio_actual_centavos",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "be5221dabfceadfb0fdd44f0ad700129b183856ebd9de24fa4522fb6f38c68dd"
+}

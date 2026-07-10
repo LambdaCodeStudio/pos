@@ -236,6 +236,13 @@ export interface Cliente {
   activo: boolean;
 }
 
+export interface ItemCargoFiado {
+  producto_id: string;
+  producto_nombre: string;
+  cantidad: string;
+  cantidad_pendiente: string;
+}
+
 export interface MovimientoCuenta {
   id: string;
   tipo: 'cargo' | 'pago' | 'ajuste';
@@ -245,6 +252,7 @@ export interface MovimientoCuenta {
   motivo: string | null;
   usuario_id: string;
   creado_en: string;
+  items: ItemCargoFiado[];
 }
 
 export interface UsuarioResumen {

@@ -2,7 +2,7 @@
 // software; los roles son bundles editables; lo individual es solo aditivo.
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, type RolConPermisos, type UsuarioResumen } from '../lib/api';
+import { api, usuarioGuardado, type RolConPermisos, type UsuarioResumen } from '../lib/api';
 import Shell, { Encabezado } from './Shell';
 import { Boton, Campo, Cargando, claseInput, EstadoVacio, Insignia, MensajeError, Modal, Tabla, Tarjeta } from './ui';
 
@@ -54,6 +54,8 @@ function TablaUsuarios() {
   const [usuarios, setUsuarios] = useState<UsuarioResumen[] | null>(null);
   const [roles, setRoles] = useState<RolConPermisos[]>([]);
   const [editando, setEditando] = useState<UsuarioResumen | 'nuevo' | null>(null);
+  const [eliminando, setEliminando] = useState<UsuarioResumen | null>(null);
+  const usuarioId = usuarioGuardado()?.id;
 
   const cargar = useCallback(() => {
     api<UsuarioResumen[]>('GET', '/identidad/usuarios?incluir_inactivos=true').then(setUsuarios).catch(() => setUsuarios([]));
@@ -82,7 +84,12 @@ function TablaUsuarios() {
               </td>
               <td className="px-3 py-3">{!u.activo && <Insignia tono="rojo">inactivo</Insignia>}</td>
               <td className="px-3 py-3 text-right">
-                <Boton chico variante="fantasma" onClick={() => setEditando(u)}>Editar</Boton>
+                <span className="flex justify-end gap-1">
+                  <Boton chico variante="fantasma" onClick={() => setEditando(u)}>Editar</Boton>
+                  {u.activo && u.id !== usuarioId && (
+                    <Boton chico variante="peligro" onClick={() => setEliminando(u)}>Eliminar</Boton>
+                  )}
+                </span>
               </td>
             </tr>
           ))}
@@ -92,7 +99,57 @@ function TablaUsuarios() {
         <ModalUsuario usuario={editando === 'nuevo' ? null : editando} roles={roles}
           onCerrar={() => setEditando(null)} onGuardado={() => { setEditando(null); cargar(); }} />
       )}
+      {eliminando && (
+        <ModalEliminarUsuario
+          usuario={eliminando}
+          onCerrar={() => setEliminando(null)}
+          onEliminado={() => { setEliminando(null); cargar(); }}
+        />
+      )}
     </Tarjeta>
+  );
+}
+
+function ModalEliminarUsuario({
+  usuario,
+  onCerrar,
+  onEliminado,
+}: {
+  usuario: UsuarioResumen;
+  onCerrar: () => void;
+  onEliminado: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [eliminando, setEliminando] = useState(false);
+
+  async function confirmar() {
+    setError(null);
+    setEliminando(true);
+    try {
+      await api('DELETE', `/identidad/usuarios/${usuario.id}`);
+      onEliminado();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo eliminar el usuario.');
+      setEliminando(false);
+    }
+  }
+
+  return (
+    <Modal abierto titulo="Eliminar usuario" onCerrar={onCerrar} ancho="max-w-sm">
+      <div className="space-y-4">
+        <p className="text-sm text-stone-600">
+          ¿Eliminar a <strong className="text-stone-800">{usuario.nombre}</strong>? Deja de poder
+          iniciar sesión; su historial de ventas y auditoría se conserva.
+        </p>
+        <MensajeError error={error} />
+        <div className="flex justify-end gap-2">
+          <Boton variante="secundario" onClick={onCerrar} deshabilitado={eliminando}>Cancelar</Boton>
+          <Boton variante="peligro" onClick={confirmar} deshabilitado={eliminando}>
+            {eliminando ? 'Eliminando…' : 'Eliminar'}
+          </Boton>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

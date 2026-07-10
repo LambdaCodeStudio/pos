@@ -379,6 +379,14 @@ async fn sincronizar_venta(
             "el pago con cuenta corriente requiere un cliente identificado".into(),
         ));
     }
+    // El fiado es todo-o-nada por venta: no se mezcla con otros medios de
+    // pago. Así cada ítem de la venta es, sin ambigüedad, un renglón
+    // pendiente en la cuenta del cliente (ver clientes::registrar_cargo_de_venta).
+    if monto_cuenta_corriente > 0 && monto_cuenta_corriente != datos.total_centavos {
+        return Err(ErrorApi::Validacion(
+            "el fiado no se puede combinar con otro medio de pago en el mismo ticket".into(),
+        ));
+    }
 
     for item in &datos.items {
         if item.cantidad <= Decimal::ZERO {
@@ -426,6 +434,7 @@ async fn sincronizar_venta(
         return Ok(Json(json!({ "id": datos.id, "ya_estaba_sincronizada": true })));
     }
 
+    let mut items_fiado = Vec::new();
     for item in &datos.items {
         // Snapshots: lo que mandó el dispositivo manda; el catálogo completa.
         let producto = sqlx::query!(
@@ -441,6 +450,8 @@ async fn sincronizar_venta(
         .await?
         .ok_or_else(|| ErrorApi::Validacion("producto inexistente en la venta".into()))?;
 
+        let producto_nombre = item.producto_nombre.as_deref().unwrap_or(&producto.nombre);
+
         let item_id = Uuid::now_v7();
         sqlx::query!(
             r#"
@@ -452,7 +463,7 @@ async fn sincronizar_venta(
             item_id,
             datos.id,
             item.producto_id,
-            item.producto_nombre.as_deref().unwrap_or(&producto.nombre),
+            producto_nombre,
             item.precio_unitario_centavos,
             item.cantidad,
             item.iva_pct.unwrap_or(producto.iva_pct),
@@ -471,6 +482,14 @@ async fn sincronizar_venta(
             usuario.id,
         )
         .await?;
+
+        if monto_cuenta_corriente > 0 {
+            items_fiado.push(crate::clientes::ItemFiado {
+                producto_id: item.producto_id,
+                producto_nombre: producto_nombre.to_string(),
+                cantidad: item.cantidad,
+            });
+        }
     }
 
     for pago in &datos.pagos {
@@ -497,6 +516,7 @@ async fn sincronizar_venta(
             datos.cliente_id.unwrap(),
             datos.id,
             monto_cuenta_corriente,
+            &items_fiado,
             &usuario,
         )
         .await?;

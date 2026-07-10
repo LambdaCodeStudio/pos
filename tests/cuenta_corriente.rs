@@ -5,6 +5,7 @@
 mod comun;
 
 use axum::http::StatusCode;
+use rust_decimal::Decimal;
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -84,9 +85,8 @@ async fn saldo_de(pool: &PgPool, cliente_id: Uuid) -> i64 {
 async fn venta_fiada_inserta_cargo_en_la_misma_transaccion(pool: PgPool) {
     let esc = armar_escenario(&pool).await;
 
-    // Venta mixta: $10,00 efectivo + $30,00 fiado.
-    let cuerpo = venta_con_pagos(&esc, esc.sesion_id, 4000, Some(esc.cliente_id), json!([
-        { "medio": "efectivo", "monto_centavos": 1000 },
+    // El fiado va por el ticket completo (no se mezcla con otro medio).
+    let cuerpo = venta_con_pagos(&esc, esc.sesion_id, 3000, Some(esc.cliente_id), json!([
         { "medio": "cuenta_corriente", "monto_centavos": 3000 },
     ]));
     let (st, resp) = pedir(&esc.app, "POST", "/ventas", Some(&esc.token), Some(cuerpo)).await;
@@ -114,6 +114,32 @@ async fn venta_fiada_inserta_cargo_en_la_misma_transaccion(pool: PgPool) {
     .await
     .unwrap();
     assert_eq!(suma, 3000);
+
+    // El renglón de producto queda pendiente por la cantidad completa.
+    let (cantidad, cantidad_pendiente): (Decimal, Decimal) = sqlx::query_as(
+        "SELECT cantidad, cantidad_pendiente FROM clientes.cargo_items WHERE cliente_id = $1",
+    )
+    .bind(esc.cliente_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(cantidad, Decimal::ONE);
+    assert_eq!(cantidad_pendiente, Decimal::ONE);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn fiado_mezclado_con_otro_medio_es_invalido(pool: PgPool) {
+    let esc = armar_escenario(&pool).await;
+
+    // El fiado no se puede combinar con otro medio: se rechaza, aunque la
+    // suma de pagos coincida con el total.
+    let cuerpo = venta_con_pagos(&esc, esc.sesion_id, 4000, Some(esc.cliente_id), json!([
+        { "medio": "efectivo", "monto_centavos": 1000 },
+        { "medio": "cuenta_corriente", "monto_centavos": 3000 },
+    ]));
+    let (st, resp) = pedir(&esc.app, "POST", "/ventas", Some(&esc.token), Some(cuerpo)).await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY, "{resp}");
+    assert_eq!(saldo_de(&pool, esc.cliente_id).await, 0);
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -235,9 +261,151 @@ async fn anulacion_revierte_el_cargo_del_fiado(pool: PgPool) {
     assert_eq!(movimientos[0], ("cargo".to_string(), 3000));
     assert_eq!(movimientos[1], ("ajuste".to_string(), -3000));
 
+    // El renglón de producto también queda saldado: no debe seguir
+    // consumiéndose por FIFO ni revalorizándose si el producto cambia de precio.
+    let cantidad_pendiente: Decimal = sqlx::query_scalar(
+        "SELECT cantidad_pendiente FROM clientes.cargo_items WHERE cliente_id = $1",
+    )
+    .bind(esc.cliente_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(cantidad_pendiente, Decimal::ZERO);
+
     // Reintento de anulación: no duplica la reversa.
     let (st, _) = pedir(&esc.app, "POST", &format!("/ventas/{venta_id}/anular"),
         Some(&esc.token), None).await;
     assert_eq!(st, StatusCode::OK);
     assert_eq!(saldo_de(&pool, esc.cliente_id).await, 0);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn pago_consume_cargo_items_pendientes_por_fifo(pool: PgPool) {
+    let esc = armar_escenario(&pool).await;
+
+    // Precio de catálogo: $10,00/u. Dos ventas fiadas de 2 unidades cada una,
+    // la más vieja primero.
+    let (st, _) = pedir(&esc.app, "POST", &format!("/catalogo/productos/{}/precio", esc.producto_id),
+        Some(&esc.token), Some(json!({ "precio_centavos": 1000 }))).await;
+    assert_eq!(st, StatusCode::OK);
+
+    for _ in 0..2 {
+        let cuerpo = json!({
+            "id": Uuid::now_v7(),
+            "sesion_id": esc.sesion_id,
+            "cliente_id": esc.cliente_id,
+            "total_centavos": 2000,
+            "vendida_en": chrono::Utc::now(),
+            "items": [{
+                "producto_id": esc.producto_id,
+                "precio_unitario_centavos": 1000,
+                "cantidad": "2",
+                "subtotal_centavos": 2000,
+            }],
+            "pagos": [{ "medio": "cuenta_corriente", "monto_centavos": 2000 }],
+        });
+        let (st, resp) = pedir(&esc.app, "POST", "/ventas", Some(&esc.token), Some(cuerpo)).await;
+        assert_eq!(st, StatusCode::OK, "{resp}");
+    }
+    assert_eq!(saldo_de(&pool, esc.cliente_id).await, 4000);
+
+    // Paga $25,00: salda el renglón más viejo entero ($20,00) y la mitad
+    // del segundo (1 de las 2 unidades pendientes, a $10,00/u).
+    let (st, resp) = pedir(&esc.app, "POST", &format!("/clientes/{}/pagos", esc.cliente_id),
+        Some(&esc.token), Some(json!({ "monto_centavos": 2500, "medio": "efectivo" }))).await;
+    assert_eq!(st, StatusCode::OK, "{resp}");
+    assert_eq!(saldo_de(&pool, esc.cliente_id).await, 1500);
+
+    let pendientes: Vec<Decimal> = sqlx::query_scalar(
+        "SELECT cantidad_pendiente FROM clientes.cargo_items WHERE cliente_id = $1 ORDER BY creado_en",
+    )
+    .bind(esc.cliente_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(pendientes, vec![Decimal::ZERO, Decimal::new(15, 1)]);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn reprecio_automatico_sube_y_baja_la_deuda_pendiente(pool: PgPool) {
+    let esc = armar_escenario(&pool).await;
+
+    let (st, _) = pedir(&esc.app, "POST", &format!("/catalogo/productos/{}/precio", esc.producto_id),
+        Some(&esc.token), Some(json!({ "precio_centavos": 1000 }))).await;
+    assert_eq!(st, StatusCode::OK);
+
+    let cuerpo = json!({
+        "id": Uuid::now_v7(),
+        "sesion_id": esc.sesion_id,
+        "cliente_id": esc.cliente_id,
+        "total_centavos": 3000,
+        "vendida_en": chrono::Utc::now(),
+        "items": [{
+            "producto_id": esc.producto_id,
+            "precio_unitario_centavos": 1000,
+            "cantidad": "3",
+            "subtotal_centavos": 3000,
+        }],
+        "pagos": [{ "medio": "cuenta_corriente", "monto_centavos": 3000 }],
+    });
+    let (st, resp) = pedir(&esc.app, "POST", "/ventas", Some(&esc.token), Some(cuerpo)).await;
+    assert_eq!(st, StatusCode::OK, "{resp}");
+    assert_eq!(saldo_de(&pool, esc.cliente_id).await, 3000);
+
+    // Sube a $12,00/u: +$2,00 × 3 unidades pendientes = +$6,00.
+    let (st, _) = pedir(&esc.app, "POST", &format!("/catalogo/productos/{}/precio", esc.producto_id),
+        Some(&esc.token), Some(json!({ "precio_centavos": 1200 }))).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(saldo_de(&pool, esc.cliente_id).await, 3600);
+
+    // Baja a $7,00/u: −$5,00 × 3 unidades pendientes = −$15,00 (simétrico).
+    let (st, _) = pedir(&esc.app, "POST", &format!("/catalogo/productos/{}/precio", esc.producto_id),
+        Some(&esc.token), Some(json!({ "precio_centavos": 700 }))).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(saldo_de(&pool, esc.cliente_id).await, 2100);
+
+    let motivo: Option<String> = sqlx::query_scalar(
+        "SELECT motivo FROM clientes.cuenta_movimientos
+         WHERE cliente_id = $1 AND tipo = 'ajuste' ORDER BY creado_en LIMIT 1",
+    )
+    .bind(esc.cliente_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(motivo, Some(format!("reprecio_producto:{}", esc.producto_id)));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn condonacion_negativa_tambien_consume_fifo(pool: PgPool) {
+    let esc = armar_escenario(&pool).await;
+
+    // El valor pendiente se calcula al precio de catálogo vigente.
+    let (st, _) = pedir(&esc.app, "POST", &format!("/catalogo/productos/{}/precio", esc.producto_id),
+        Some(&esc.token), Some(json!({ "precio_centavos": 3000 }))).await;
+    assert_eq!(st, StatusCode::OK);
+
+    let cuerpo = venta_con_pagos(&esc, esc.sesion_id, 3000, Some(esc.cliente_id), json!([
+        { "medio": "cuenta_corriente", "monto_centavos": 3000 },
+    ]));
+    let (st, _) = pedir(&esc.app, "POST", "/ventas", Some(&esc.token), Some(cuerpo)).await;
+    assert_eq!(st, StatusCode::OK);
+
+    // Ajuste manual: condona la mitad de la deuda (motivo obligatorio).
+    let (st, resp) = pedir(&esc.app, "POST", &format!("/clientes/{}/ajustes", esc.cliente_id),
+        Some(&esc.token), Some(json!({
+            "monto_centavos": -1500,
+            "motivo": "condonacion parcial",
+        }))).await;
+    assert_eq!(st, StatusCode::OK, "{resp}");
+    assert_eq!(saldo_de(&pool, esc.cliente_id).await, 1500);
+
+    // El renglón (cantidad = 1 unidad a $30,00) queda pendiente por la mitad.
+    let cantidad_pendiente: Decimal = sqlx::query_scalar(
+        "SELECT cantidad_pendiente FROM clientes.cargo_items WHERE cliente_id = $1",
+    )
+    .bind(esc.cliente_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(cantidad_pendiente, Decimal::new(5, 1));
 }

@@ -1,15 +1,20 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT cliente_id, monto_centavos FROM clientes.cuenta_movimientos\n           WHERE venta_id = $1 AND tipo = 'cargo'",
+  "query": "SELECT id, cliente_id, monto_centavos FROM clientes.cuenta_movimientos\n           WHERE venta_id = $1 AND tipo = 'cargo'",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "cliente_id",
+        "name": "id",
         "type_info": "Uuid"
       },
       {
         "ordinal": 1,
+        "name": "cliente_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
         "name": "monto_centavos",
         "type_info": "Int8"
       }
@@ -21,8 +26,9 @@
     },
     "nullable": [
       false,
+      false,
       false
     ]
   },
-  "hash": "96b4de83bc326b8388e56066eb64da6ce74a225073720a206f7e003f039cd9b5"
+  "hash": "8991560e4b10eafb733d737176ea01191263edfbb22fa6bf7bfd6aa5d95fb40e"
 }

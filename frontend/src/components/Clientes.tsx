@@ -11,15 +11,18 @@ export default function Clientes() {
   const [clientes, setClientes] = useState<Cliente[] | null>(null);
   const [buscar, setBuscar] = useState('');
   const [soloConSaldo, setSoloConSaldo] = useState(false);
+  const [mostrarInactivos, setMostrarInactivos] = useState(false);
   const [editando, setEditando] = useState<Cliente | 'nuevo' | null>(null);
   const [cuentaDe, setCuentaDe] = useState<Cliente | null>(null);
+  const [eliminando, setEliminando] = useState<Cliente | null>(null);
 
   const cargar = useCallback(() => {
     const partes = ['limite=100'];
     if (buscar.trim()) partes.push(`buscar=${encodeURIComponent(buscar.trim())}`);
     if (soloConSaldo) partes.push('con_saldo=true');
+    if (mostrarInactivos) partes.push('incluir_inactivos=true');
     api<Cliente[]>('GET', `/clientes?${partes.join('&')}`).then(setClientes).catch(() => setClientes([]));
-  }, [buscar, soloConSaldo]);
+  }, [buscar, soloConSaldo, mostrarInactivos]);
   useEffect(() => cargar(), [cargar]);
 
   const puede = tienePermiso('gestionar_clientes');
@@ -40,6 +43,11 @@ export default function Clientes() {
             <input type="checkbox" checked={soloConSaldo} onChange={(e) => setSoloConSaldo(e.target.checked)}
               className="h-4 w-4 rounded border-stone-300 text-acento-600" />
             Solo con saldo
+          </label>
+          <label className="flex items-center gap-2 text-sm text-stone-600">
+            <input type="checkbox" checked={mostrarInactivos} onChange={(e) => setMostrarInactivos(e.target.checked)}
+              className="h-4 w-4 rounded border-stone-300 text-acento-600" />
+            Mostrar inactivos
           </label>
         </div>
 
@@ -76,6 +84,9 @@ export default function Clientes() {
                     <span className="flex justify-end gap-1">
                       <Boton chico variante="fantasma" onClick={() => setCuentaDe(c)}>Cuenta</Boton>
                       {puede && <Boton chico variante="fantasma" onClick={() => setEditando(c)}>Editar</Boton>}
+                      {puede && c.activo && (
+                        <Boton chico variante="peligro" onClick={() => setEliminando(c)}>Eliminar</Boton>
+                      )}
                     </span>
                   </td>
                 </tr>
@@ -92,7 +103,54 @@ export default function Clientes() {
       {cuentaDe && (
         <ModalCuenta cliente={cuentaDe} onCerrar={() => { setCuentaDe(null); cargar(); }} />
       )}
+      {eliminando && (
+        <ModalEliminarCliente cliente={eliminando} onCerrar={() => setEliminando(null)}
+          onEliminado={() => { setEliminando(null); cargar(); }} />
+      )}
     </Shell>
+  );
+}
+
+function ModalEliminarCliente({
+  cliente,
+  onCerrar,
+  onEliminado,
+}: {
+  cliente: Cliente;
+  onCerrar: () => void;
+  onEliminado: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [eliminando, setEliminando] = useState(false);
+
+  async function confirmar() {
+    setError(null);
+    setEliminando(true);
+    try {
+      await api('DELETE', `/clientes/${cliente.id}`);
+      onEliminado();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo eliminar el cliente.');
+      setEliminando(false);
+    }
+  }
+
+  return (
+    <Modal abierto titulo="Eliminar cliente" onCerrar={onCerrar} ancho="max-w-sm">
+      <div className="space-y-4">
+        <p className="text-sm text-stone-600">
+          ¿Eliminar <strong className="text-stone-800">{cliente.nombre}</strong>? Deja de listarse para
+          nuevas ventas fiadas; su cuenta y su historial se conservan.
+        </p>
+        <MensajeError error={error} />
+        <div className="flex justify-end gap-2">
+          <Boton variante="secundario" onClick={onCerrar} deshabilitado={eliminando}>Cancelar</Boton>
+          <Boton variante="peligro" onClick={confirmar} deshabilitado={eliminando}>
+            {eliminando ? 'Eliminando…' : 'Eliminar'}
+          </Boton>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -111,6 +169,7 @@ function ModalCliente({
   const [limite, setLimite] = useState(
     cliente?.limite_credito_centavos != null ? (cliente.limite_credito_centavos / 100).toFixed(2).replace('.', ',') : '',
   );
+  const [activo, setActivo] = useState(cliente?.activo ?? true);
   const [error, setError] = useState<string | null>(null);
 
   async function guardar(e: React.FormEvent) {
@@ -124,6 +183,7 @@ function ModalCliente({
         telefono: telefono || null,
         documento: documento || null,
         limite_credito_centavos: limiteCentavos,
+        ...(cliente ? { activo } : {}),
       };
       if (cliente) await api('PATCH', `/clientes/${cliente.id}`, cuerpo);
       else await api('POST', '/clientes', cuerpo);
@@ -150,6 +210,12 @@ function ModalCliente({
         <Campo etiqueta="Límite de crédito ($)" ayuda="Vacío = sin límite. El límite bloquea la venta fiada.">
           <input className={claseInput} value={limite} onChange={(e) => setLimite(e.target.value)} inputMode="decimal" placeholder="sin límite" />
         </Campo>
+        {cliente && (
+          <label className="flex items-center gap-2 text-sm text-stone-600">
+            <input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} />
+            Activo
+          </label>
+        )}
         <MensajeError error={error} />
         <div className="flex justify-end gap-2">
           <Boton variante="secundario" onClick={onCerrar}>Cancelar</Boton>
@@ -239,18 +305,34 @@ function ModalCuenta({ cliente, onCerrar }: { cliente: Cliente; onCerrar: () => 
           ) : (
             <ul className="max-h-80 divide-y divide-stone-100 overflow-y-auto">
               {datos.movimientos.map((m) => (
-                <li key={m.id} className="flex items-center justify-between py-2.5 text-sm">
-                  <div>
-                    <p className="font-medium text-stone-800">
-                      {ETIQUETA_TIPO[m.tipo]}
-                      {m.motivo ? <span className="font-normal text-stone-400"> · {m.motivo}</span> : null}
-                      {m.medio_pago ? <span className="font-normal text-stone-400"> · {m.medio_pago.replace('_', ' ')}</span> : null}
-                    </p>
-                    <p className="text-xs text-stone-400">{fechaHora(m.creado_en)}</p>
+                <li key={m.id} className="py-2.5 text-sm">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-stone-800">
+                        {ETIQUETA_TIPO[m.tipo]}
+                        {m.motivo ? <span className="font-normal text-stone-400"> · {m.motivo}</span> : null}
+                        {m.medio_pago ? <span className="font-normal text-stone-400"> · {m.medio_pago.replace('_', ' ')}</span> : null}
+                      </p>
+                      <p className="text-xs text-stone-400">{fechaHora(m.creado_en)}</p>
+                    </div>
+                    <span className={`font-semibold ${m.monto_centavos > 0 ? 'text-red-600' : 'text-acento-700'}`}>
+                      {m.monto_centavos > 0 ? '+' : ''}{pesos(m.monto_centavos)}
+                    </span>
                   </div>
-                  <span className={`font-semibold ${m.monto_centavos > 0 ? 'text-red-600' : 'text-acento-700'}`}>
-                    {m.monto_centavos > 0 ? '+' : ''}{pesos(m.monto_centavos)}
-                  </span>
+                  {m.items.length > 0 && (
+                    <ul className="mt-1.5 space-y-0.5 pl-3 text-xs text-stone-500">
+                      {m.items.map((it) => (
+                        <li key={it.producto_id} className="flex items-center justify-between gap-2">
+                          <span>{it.producto_nombre} · {parseFloat(it.cantidad)}</span>
+                          {parseFloat(it.cantidad_pendiente) > 0 ? (
+                            <span className="text-red-500">pendiente: {parseFloat(it.cantidad_pendiente)}</span>
+                          ) : (
+                            <span className="text-acento-600">saldado</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               ))}
             </ul>

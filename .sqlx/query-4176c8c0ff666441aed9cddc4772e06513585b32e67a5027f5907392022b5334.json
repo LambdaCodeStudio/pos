@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT ri.id, ri.producto_id, pr.nombre AS producto_nombre, ri.cantidad,\n               ri.costo_centavos, ri.costo_incluye_iva, ri.iva_pct, ri.markup_pct,\n               ri.precio_final_centavos, ri.vencimiento, pr.controla_vencimiento\n        FROM compras.recepcion_items ri\n        JOIN catalogo.productos pr ON pr.id = ri.producto_id\n        WHERE ri.recepcion_id = $1\n        ORDER BY ri.creado_en\n        ",
+  "query": "\n        SELECT ri.id, ri.producto_id, pr.nombre AS producto_nombre, ri.cantidad,\n               ri.costo_centavos, ri.costo_incluye_iva, ri.iva_pct, ri.markup_pct,\n               ri.precio_final_centavos, ri.vencimiento, pr.controla_vencimiento,\n               pr.precio_actual_centavos AS precio_anterior_centavos\n        FROM compras.recepcion_items ri\n        JOIN catalogo.productos pr ON pr.id = ri.producto_id\n        WHERE ri.recepcion_id = $1\n        ORDER BY ri.creado_en\n        ",
   "describe": {
     "columns": [
       {
@@ -57,6 +57,11 @@
         "ordinal": 10,
         "name": "controla_vencimiento",
         "type_info": "Bool"
+      },
+      {
+        "ordinal": 11,
+        "name": "precio_anterior_centavos",
+        "type_info": "Int8"
       }
     ],
     "parameters": {
@@ -75,8 +80,9 @@
       false,
       false,
       true,
-      false
+      false,
+      true
     ]
   },
-  "hash": "d319345ae140983778f769193d6b05fc29398ae27558e70c42ffbc9e9b7a32ec"
+  "hash": "4176c8c0ff666441aed9cddc4772e06513585b32e67a5027f5907392022b5334"
 }

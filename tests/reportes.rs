@@ -60,6 +60,15 @@ async fn resumen_de_ventas_agrega_y_excluye_anuladas(pool: PgPool) {
     assert_eq!(resumen["tickets"], 2);
     assert_eq!(resumen["ticket_promedio_centavos"], 1750);
     assert_eq!(resumen["anuladas"], 1);
+    assert_eq!(resumen["anuladas_centavos"], 9000, "la anulada de 9000 sí cuenta acá: {resumen}");
+
+    // Sin costo cargado, el margen es 100% del facturado.
+    assert_eq!(resumen["costo_vendido_centavos"], 0);
+    assert_eq!(resumen["margen_centavos"], 3500);
+
+    let motivos = resumen["anuladas_por_motivo"].as_array().unwrap();
+    assert_eq!(motivos.len(), 1);
+    assert_eq!(motivos[0]["total_centavos"], 9000);
 
     let medios = resumen["por_medio"].as_array().unwrap();
     assert_eq!(medios.len(), 2);
@@ -73,14 +82,26 @@ async fn resumen_de_ventas_agrega_y_excluye_anuladas(pool: PgPool) {
     assert_eq!(top.len(), 1);
     assert_eq!(top[0]["facturado_centavos"], 3500);
 
+    // Rendimiento por vendedor: mismo admin operó las tres ventas.
+    let (st, vendedores) = pedir(&app, "GET", "/reportes/ventas-por-vendedor", Some(&token), None).await;
+    assert_eq!(st, StatusCode::OK, "{vendedores}");
+    let vendedores = vendedores.as_array().unwrap();
+    assert_eq!(vendedores.len(), 1);
+    assert_eq!(vendedores[0]["tickets"], 2);
+    assert_eq!(vendedores[0]["facturado_centavos"], 3500);
+    assert_eq!(vendedores[0]["anuladas"], 1);
+
     // Arqueos: tras cerrar la sesión aparece con su diferencia.
     let (st, _) = pedir(&app, "POST", &format!("/ventas/sesiones/{sesion_id}/cerrar"),
         Some(&token), Some(json!({ "monto_contado_centavos": 900 }))).await;
     assert_eq!(st, StatusCode::OK);
     let (st, arqueos) = pedir(&app, "GET", "/reportes/arqueos", Some(&token), None).await;
     assert_eq!(st, StatusCode::OK);
-    assert_eq!(arqueos.as_array().unwrap().len(), 1);
-    assert_eq!(arqueos[0]["diferencia_centavos"], -100, "esperado 1000 de efectivo, contado 900");
+    let sesiones = arqueos["sesiones"].as_array().unwrap();
+    assert_eq!(sesiones.len(), 1);
+    assert_eq!(sesiones[0]["diferencia_centavos"], -100, "esperado 1000 de efectivo, contado 900");
+    assert_eq!(arqueos["total_diferencia_centavos"], -100);
+    assert_eq!(arqueos["con_diferencia"], 1);
 
     // Inventario: la venta dejó stock negativo, que se señala pero NO
     // entra en la valuación (un faltante no es valor).
@@ -97,7 +118,16 @@ async fn reportes_exigen_permiso(pool: PgPool) {
     let token = token_para(cajero);
     let app = app(pool);
 
-    for ruta in ["/reportes/ventas-resumen", "/reportes/fiado", "/reportes/inventario"] {
+    for ruta in [
+        "/reportes/ventas-resumen",
+        "/reportes/fiado",
+        "/reportes/inventario",
+        "/reportes/productos-sin-movimiento",
+        "/reportes/ventas-por-vendedor",
+        "/reportes/mermas",
+        "/reportes/arqueos",
+        "/reportes/compras-resumen",
+    ] {
         let (st, _) = pedir(&app, "GET", ruta, Some(&token), None).await;
         assert_eq!(st, StatusCode::FORBIDDEN, "{ruta}");
     }

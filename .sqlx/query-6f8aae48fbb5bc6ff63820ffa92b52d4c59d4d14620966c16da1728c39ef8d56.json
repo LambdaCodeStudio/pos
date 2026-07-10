@@ -1,0 +1,43 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT p.id, p.nombre, s.cantidad AS \"stock!\",\n               COALESCE(ROUND(s.cantidad * COALESCE(p.costo_actual_centavos, 0)), 0)::bigint AS \"valor_centavos!\"\n        FROM catalogo.productos p\n        JOIN inventario.stock_actual s ON s.producto_id = p.id\n        WHERE p.activo AND s.cantidad > 0\n          AND NOT EXISTS (\n              SELECT 1 FROM ventas.venta_items vi\n              JOIN ventas.ventas v ON v.id = vi.venta_id\n              WHERE vi.producto_id = p.id AND v.estado = 'confirmada'\n                AND (v.vendida_en AT TIME ZONE $3)::date BETWEEN $1 AND $2\n          )\n        ORDER BY \"valor_centavos!\" DESC\n        LIMIT $4\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "nombre",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "stock!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 3,
+        "name": "valor_centavos!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Date",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "6f8aae48fbb5bc6ff63820ffa92b52d4c59d4d14620966c16da1728c39ef8d56"
+}

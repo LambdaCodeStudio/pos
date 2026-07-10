@@ -644,7 +644,8 @@ async fn confirmar_recepcion(
         r#"
         SELECT ri.id, ri.producto_id, pr.nombre AS producto_nombre, ri.cantidad,
                ri.costo_centavos, ri.costo_incluye_iva, ri.iva_pct, ri.markup_pct,
-               ri.precio_final_centavos, ri.vencimiento, pr.controla_vencimiento
+               ri.precio_final_centavos, ri.vencimiento, pr.controla_vencimiento,
+               pr.precio_actual_centavos AS precio_anterior_centavos
         FROM compras.recepcion_items ri
         JOIN catalogo.productos pr ON pr.id = ri.producto_id
         WHERE ri.recepcion_id = $1
@@ -704,6 +705,15 @@ async fn confirmar_recepcion(
             costo_normalizado,
         )
         .execute(&mut *tx)
+        .await?;
+
+        crate::clientes::reindexar_precio_producto(
+            &mut tx,
+            item.producto_id,
+            item.precio_anterior_centavos,
+            item.precio_final_centavos,
+            usuario.id,
+        )
         .await?;
 
         // 2. Ledger de inventario: entrada al depósito principal, con lote

@@ -3,10 +3,17 @@
 // recorrido de etiquetado con barra de progreso.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, ErrorApi, type ConfiguracionNegocio, type Producto, type Proveedor, type RecepcionDetalle as Detalle } from '../lib/api';
+import { api, ErrorApi, tienePermiso, type Categoria, type ConfiguracionNegocio, type Producto, type Proveedor, type RecepcionDetalle as Detalle } from '../lib/api';
 import { aCentavos, cantidad as fmtCantidad, desdeCentavos, fecha, pesos, redondearComercial } from '../lib/formato';
+import EscanerCodigoBarras from './EscanerCodigoBarras';
+import { ModalProducto } from './Productos';
 import Shell, { Encabezado } from './Shell';
 import { Boton, Campo, Cargando, claseInput, EstadoVacio, Insignia, MensajeError, Modal, Tabla, Tarjeta } from './ui';
+
+/** Cámara disponible (navegador y contexto seguro): sin esto no tiene sentido ofrecer el escaneo. */
+const soportaCamara = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
+/** Un código de barras típico (EAN-8/13, UPC-A) es puramente numérico. */
+const pareceCodigoDeBarras = (texto: string) => /^\d{6,14}$/.test(texto);
 
 function idDeLaUrl(): string | null {
   return new URLSearchParams(window.location.search).get('id');
@@ -191,6 +198,13 @@ function ModalItem({
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [escaneando, setEscaneando] = useState(false);
+  const [creandoProducto, setCreandoProducto] = useState(false);
+  const puedeCrearProducto = tienePermiso('gestionar_catalogo');
+  /** Overrides de markup/IVA del producto elegido, editables si hay permiso de catálogo. */
+  const [markupOverride, setMarkupOverride] = useState('');
+  const [ivaOverride, setIvaOverride] = useState('');
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
   /** precios_con_iva del proveedor: resuelve el default "según proveedor". */
   const [proveedorConIva, setProveedorConIva] = useState<boolean | null>(null);
   /** Redondeo comercial configurado, para que el precio en vivo coincida. */
@@ -202,11 +216,14 @@ function ModalItem({
     api<ConfiguracionNegocio>('GET', '/catalogo/configuracion')
       .then((c) => setRedondeo(c.redondeo_precio_centavos))
       .catch(() => {});
+    if (puedeCrearProducto) {
+      api<Categoria[]>('GET', '/catalogo/categorias').then(setCategorias).catch(() => {});
+    }
     if (!recepcion.proveedor_id) return;
     api<Proveedor[]>('GET', '/compras/proveedores?incluir_inactivos=true')
       .then((ps) => setProveedorConIva(ps.find((p) => p.id === recepcion.proveedor_id)?.precios_con_iva ?? null))
       .catch(() => {});
-  }, [recepcion.proveedor_id]);
+  }, [recepcion.proveedor_id, puedeCrearProducto]);
 
   function seleccionar(p: Producto) {
     setProducto(p);
@@ -214,7 +231,25 @@ function ModalItem({
     setBusqueda('');
     // El último costo conocido viene precargado: solo se corrige si cambió.
     setCosto(desdeCentavos(p.costo_actual_centavos));
+    setMarkupOverride(p.markup_pct_override ?? '');
+    setIvaOverride(p.iva_pct_override ?? '');
     setError(null);
+  }
+
+  /** Valor efectivo para el cálculo en vivo: override editado > default de categoría > resuelto del back. */
+  function pctEfectivo(override: string, categoriaDefault: string | undefined, resuelto: string | undefined): number {
+    if (puedeCrearProducto && override.trim() !== '') return parseFloat(override.replace(',', '.'));
+    if (puedeCrearProducto && categoriaDefault !== undefined) return parseFloat(categoriaDefault);
+    return parseFloat(resuelto ?? '0');
+  }
+
+  /** true si el override editado difiere numéricamente del que tiene guardado el producto. */
+  function difierePct(actual: string, original: string | null): boolean {
+    const a = actual.trim() === '' ? null : parseFloat(actual.replace(',', '.'));
+    const o = original === null ? null : parseFloat(original);
+    if (a === null && o === null) return false;
+    if (a === null || o === null) return true;
+    return Math.abs(a - o) > 1e-9;
   }
 
   function buscar(termino: string) {
@@ -227,39 +262,57 @@ function ModalItem({
     }, 150);
   }
 
-  /** Enter en el buscador: primero código de barras exacto (escáner), después el primer resultado. */
+  /** Busca un producto por código de barras exacto; null si no existe ninguno con ese código. */
+  async function buscarPorCodigoBarras(codigo: string): Promise<Producto | null> {
+    try {
+      const r = await api<{ producto_id: string }>('GET', `/catalogo/codigos-barras/${encodeURIComponent(codigo)}`);
+      return await api<Producto>('GET', `/catalogo/productos/${r.producto_id}`);
+    } catch (err) {
+      if (err instanceof ErrorApi && err.status === 404) return null;
+      throw err;
+    }
+  }
+
+  /** Enter en el buscador: primero código de barras exacto (escáner físico), después el primer resultado. */
   async function alEnterBusqueda() {
     const termino = busqueda.trim();
     if (!termino) return;
     try {
-      const r = await api<{ producto_id: string }>('GET', `/catalogo/codigos-barras/${encodeURIComponent(termino)}`);
-      const p = await api<Producto>('GET', `/catalogo/productos/${r.producto_id}`);
-      seleccionar(p);
-      return;
+      const p = await buscarPorCodigoBarras(termino);
+      if (p) { seleccionar(p); return; }
     } catch (err) {
-      if (err instanceof ErrorApi && err.status !== 404) {
-        setError(err.message);
-        return;
-      }
-      /* no era un código: cae al primer resultado por nombre */
+      setError(err instanceof Error ? err.message : 'error');
+      return;
     }
     if (resultados.length > 0) seleccionar(resultados[0]);
+  }
+
+  /** Código leído por la cámara: si no matchea ningún producto, ofrece cargarlo como nuevo. */
+  async function alEscanear(codigo: string) {
+    setEscaneando(false);
+    try {
+      const p = await buscarPorCodigoBarras(codigo);
+      if (p) { seleccionar(p); return; }
+      setBusqueda(codigo);
+      setResultados([]);
+      setError(`No se encontró ningún producto con el código ${codigo}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'error');
+    }
   }
 
   // Precio de venta en vivo, con la misma regla que el backend:
   // costo → IVA (si no lo incluye) → markup, redondeo solo al final.
   const costoCentavos = aCentavos(costo);
   const incluyeIvaEfectivo = incluyeIva ?? proveedorConIva ?? true;
+  const categoriaDelProducto = producto ? categorias.find((c) => c.id === producto.categoria_id) : undefined;
+  const ivaEfectivo = pctEfectivo(ivaOverride, categoriaDelProducto?.iva_pct, producto?.iva_pct_resuelto);
+  const markupEfectivo = pctEfectivo(markupOverride, categoriaDelProducto?.markup_pct, producto?.markup_pct_resuelto);
+  const costoConIvaCentavos =
+    costoCentavos !== null ? Math.round(costoCentavos * (incluyeIvaEfectivo ? 1 : 1 + ivaEfectivo / 100)) : null;
   const precioVivo =
-    producto && costoCentavos !== null && costoCentavos > 0
-      ? redondearComercial(
-          Math.round(
-            costoCentavos *
-              (incluyeIvaEfectivo ? 1 : 1 + parseFloat(producto.iva_pct_resuelto) / 100) *
-              (1 + parseFloat(producto.markup_pct_resuelto) / 100),
-          ),
-          redondeo,
-        )
+    producto && costoConIvaCentavos !== null && costoCentavos !== null && costoCentavos > 0
+      ? redondearComercial(Math.round(costoConIvaCentavos * (1 + markupEfectivo / 100)), redondeo)
       : null;
 
   async function guardar(e: React.FormEvent) {
@@ -269,6 +322,19 @@ function ModalItem({
     setError(null);
     setGuardando(true);
     try {
+      // Si se tocó el markup/IVA del producto, se guarda antes de cargar el ítem
+      // para que el precio final que calcula el back use el override nuevo.
+      if (puedeCrearProducto && (difierePct(markupOverride, producto.markup_pct_override) || difierePct(ivaOverride, producto.iva_pct_override))) {
+        await api('PATCH', `/catalogo/productos/${producto.id}`, {
+          nombre: producto.nombre,
+          categoria_id: producto.categoria_id,
+          markup_pct_override: markupOverride.trim() === '' ? null : markupOverride.replace(',', '.'),
+          iva_pct_override: ivaOverride.trim() === '' ? null : ivaOverride.replace(',', '.'),
+          unidad_de_venta: producto.unidad_de_venta,
+          controla_vencimiento: producto.controla_vencimiento,
+          activo: producto.activo,
+        });
+      }
       await api('PUT', `/compras/recepciones/${recepcion.id}/items`, {
         producto_id: producto.id,
         cantidad: cantidad.replace(',', '.'),
@@ -287,6 +353,8 @@ function ModalItem({
       setCosto('');
       setIncluyeIva(null);
       setVencimiento('');
+      setMarkupOverride('');
+      setIvaOverride('');
       window.setTimeout(() => refBusqueda.current?.focus(), 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'error');
@@ -305,16 +373,23 @@ function ModalItem({
         )}
 
         {!producto ? (
-          <Campo etiqueta="Buscar producto" ayuda="Escaneá el código de barras o escribí el nombre y Enter.">
-            <input
-              ref={refBusqueda}
-              className={claseInput}
-              value={busqueda}
-              onChange={(e) => buscar(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), alEnterBusqueda())}
-              placeholder="Código de barras o nombre…"
-              autoFocus
-            />
+          <Campo etiqueta="Buscar producto" ayuda="Escaneá el código de barras (lector físico o cámara) o escribí el nombre y Enter.">
+            <div className="flex gap-2">
+              <input
+                ref={refBusqueda}
+                className={claseInput}
+                value={busqueda}
+                onChange={(e) => buscar(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), alEnterBusqueda())}
+                placeholder="Código de barras o nombre…"
+                autoFocus
+              />
+              {soportaCamara && (
+                <Boton variante="secundario" onClick={() => setEscaneando(true)}>
+                  📷 Escanear
+                </Boton>
+              )}
+            </div>
             {resultados.length > 0 && (
               <ul className="mt-2 max-h-56 divide-y divide-stone-100 overflow-y-auto rounded-lg border border-stone-200">
                 {resultados.map((p) => (
@@ -330,6 +405,13 @@ function ModalItem({
                   </li>
                 ))}
               </ul>
+            )}
+            {puedeCrearProducto && busqueda.trim().length > 1 && resultados.length === 0 && (
+              <button type="button"
+                className="mt-2 w-full rounded-lg border border-dashed border-stone-300 px-3 py-2.5 text-left text-sm text-acento-700 hover:bg-acento-50"
+                onClick={() => setCreandoProducto(true)}>
+                + Crear "{busqueda.trim()}" como producto nuevo
+              </button>
             )}
           </Campo>
         ) : (
@@ -358,6 +440,17 @@ function ModalItem({
                   inputMode="decimal" autoFocus onFocus={(e) => e.target.select()} />
               </Campo>
             </div>
+            {puedeCrearProducto && (
+              <div className="grid grid-cols-2 gap-4">
+                <Campo etiqueta="Markup % (vacío = hereda)" ayuda="Solo de la categoría directa">
+                  <input className={claseInput} value={markupOverride} onChange={(e) => setMarkupOverride(e.target.value)} placeholder="—" />
+                </Campo>
+                <Campo etiqueta="IVA % (vacío = hereda)" ayuda="21 · 10,5 · 0 exento">
+                  <input className={claseInput} value={ivaOverride} onChange={(e) => setIvaOverride(e.target.value)} placeholder="—" />
+                </Campo>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <Campo etiqueta="El costo…" ayuda="Por defecto usa la configuración del proveedor">
                 <select className={claseInput}
@@ -376,19 +469,17 @@ function ModalItem({
             </div>
 
             {precioVivo !== null && (
-              <div className="flex items-center justify-between rounded-xl bg-stone-50 px-4 py-3">
-                <span className="text-sm text-stone-600">
-                  Precio de venta resultante
-                  {redondeo > 1 && (
-                    <span className="block text-xs text-stone-400">redondeado a múltiplos de {pesos(redondeo)}</span>
-                  )}
-                </span>
-                <span className="text-right">
-                  <span className="text-xl font-bold tabular-nums text-acento-800">{pesos(precioVivo)}</span>
+              <div className="grid grid-cols-2 gap-4">
+                <Campo etiqueta={`Con IVA (${ivaEfectivo}%)`}>
+                  <p className={claseInput + ' bg-stone-50 text-stone-500'}>{pesos(costoConIvaCentavos)}</p>
+                </Campo>
+                <Campo etiqueta={`Precio final (markup ${markupEfectivo}%)`}
+                  ayuda={redondeo > 1 ? `Redondeado a ${pesos(redondeo)}` : undefined}>
+                  <p className={claseInput + ' bg-stone-50 font-semibold text-stone-800'}>{pesos(precioVivo)}</p>
                   {producto.precio_actual_centavos !== null && producto.precio_actual_centavos !== precioVivo && (
-                    <span className="block text-xs text-stone-400">hoy {pesos(producto.precio_actual_centavos)}</span>
+                    <p className="mt-1 text-xs text-stone-400">hoy {pesos(producto.precio_actual_centavos)}</p>
                   )}
-                </span>
+                </Campo>
               </div>
             )}
           </>
@@ -402,6 +493,21 @@ function ModalItem({
           </Boton>
         </div>
       </form>
+
+      {escaneando && <EscanerCodigoBarras onDetectado={alEscanear} onCerrar={() => setEscaneando(false)} />}
+
+      {creandoProducto && (
+        <ModalProducto
+          producto={null}
+          nombreInicial={pareceCodigoDeBarras(busqueda.trim()) ? '' : busqueda.trim()}
+          codigoInicial={pareceCodigoDeBarras(busqueda.trim()) ? busqueda.trim() : ''}
+          onCerrar={() => setCreandoProducto(false)}
+          onGuardado={(p) => {
+            setCreandoProducto(false);
+            if (p) seleccionar(p);
+          }}
+        />
+      )}
     </Modal>
   );
 }

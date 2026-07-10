@@ -229,6 +229,82 @@ async fn confirmar_aplica_precios_stock_y_lotes(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn confirmar_recepcion_reindexa_el_fiado_pendiente_del_producto(pool: PgPool) {
+    let esc = armar_escenario(&pool).await;
+    cargar_items_estandar(&esc).await;
+    let (st, _) = pedir(
+        &esc.app,
+        "POST",
+        &format!("/compras/recepciones/{}/confirmar", esc.recepcion_id),
+        Some(&esc.token),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+
+    // Cliente fía 5 unidades de yerba al precio recién fijado ($16,94/u).
+    let (st, cliente) = pedir(&esc.app, "POST", "/clientes", Some(&esc.token),
+        Some(json!({ "nombre": "Doña Rosa" }))).await;
+    assert_eq!(st, StatusCode::OK, "{cliente}");
+    let cliente_id: Uuid = cliente["id"].as_str().unwrap().parse().unwrap();
+
+    let (st, sesion) = pedir(&esc.app, "POST", "/ventas/sesiones", Some(&esc.token),
+        Some(json!({ "monto_inicial_centavos": 0 }))).await;
+    assert_eq!(st, StatusCode::OK, "{sesion}");
+    let sesion_id: Uuid = sesion["id"].as_str().unwrap().parse().unwrap();
+
+    let venta = json!({
+        "id": Uuid::now_v7(),
+        "sesion_id": sesion_id,
+        "cliente_id": cliente_id,
+        "total_centavos": 8470,
+        "vendida_en": chrono::Utc::now(),
+        "items": [{
+            "producto_id": esc.producto_comun,
+            "precio_unitario_centavos": 1694,
+            "cantidad": "5",
+            "subtotal_centavos": 8470,
+        }],
+        "pagos": [{ "medio": "cuenta_corriente", "monto_centavos": 8470 }],
+    });
+    let (st, resp) = pedir(&esc.app, "POST", "/ventas", Some(&esc.token), Some(venta)).await;
+    assert_eq!(st, StatusCode::OK, "{resp}");
+
+    async fn saldo(pool: &PgPool, cliente_id: Uuid) -> i64 {
+        sqlx::query_scalar::<_, i64>("SELECT saldo_actual_centavos FROM clientes.clientes WHERE id = $1")
+            .bind(cliente_id)
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+    assert_eq!(saldo(&pool, cliente_id).await, 8470);
+
+    // Nueva recepción del mismo producto con otro costo (con IVA incluido
+    // por default): el precio final pasa de $16,94 a $28,00 (2000 × 1.40).
+    let (st, rec2) = pedir(&esc.app, "POST", "/compras/recepciones", Some(&esc.token),
+        Some(json!({ "proveedor_id": null }))).await;
+    // Recepción sin proveedor es válida (proveedor_id es opcional).
+    assert_eq!(st, StatusCode::OK, "{rec2}");
+    let recepcion2_id: Uuid = rec2["id"].as_str().unwrap().parse().unwrap();
+
+    let (st, item) = pedir(&esc.app, "PUT", &format!("/compras/recepciones/{recepcion2_id}/items"),
+        Some(&esc.token), Some(json!({
+            "producto_id": esc.producto_comun,
+            "cantidad": "10",
+            "costo_centavos": 2000,
+        }))).await;
+    assert_eq!(st, StatusCode::OK, "{item}");
+    assert_eq!(item["precio_final_centavos"], 2800);
+
+    let (st, resp) = pedir(&esc.app, "POST", &format!("/compras/recepciones/{recepcion2_id}/confirmar"),
+        Some(&esc.token), None).await;
+    assert_eq!(st, StatusCode::OK, "{resp}");
+
+    // +$11,06 (delta unitario: 2800 − 1694) × 5 unidades pendientes = +$55,30.
+    assert_eq!(saldo(&pool, cliente_id).await, 8470 + 5530);
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn sincronizacion_caja_expone_el_catalogo_completo(pool: PgPool) {
     let esc = armar_escenario(&pool).await;
     cargar_items_estandar(&esc).await;
