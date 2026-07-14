@@ -372,7 +372,7 @@ async fn reprecio_automatico_sube_y_baja_la_deuda_pendiente(pool: PgPool) {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(motivo, Some(format!("reprecio_producto:{}", esc.producto_id)));
+    assert_eq!(motivo, Some("cambio de precio: Pan lactal".to_string()));
 }
 
 #[sqlx::test(migrations = "./migrations")]

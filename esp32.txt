@@ -1,0 +1,505 @@
+/*
+ * ============================================================
+ * ETIQUETADORA AUTONOMA - FIRMWARE v4 (portal config + HMAC)
+ * ============================================================
+ * Cambios respecto a v3:
+ *   1. NADA hardcodeado: WiFi, URL del backend, ID de dispositivo
+ *      y secreto HMAC se configuran desde una pagina web que sirve
+ *      el propio ESP32 (portal cautivo) y se guardan en la memoria
+ *      NVS del chip. Cambio de clave del WiFi = 2 minutos desde el
+ *      celular, cero recompilacion.
+ *   2. La API key NUNCA viaja por la red. Cada request se firma
+ *      con HMAC-SHA256; el backend recalcula la firma y compara.
+ *      Quien espie el trafico ve firmas de un solo uso, no el
+ *      secreto. El timestamp evita reenviar requests capturados.
+ *
+ * COMO ENTRAR AL MODO CONFIGURACION:
+ *   - Primer arranque (sin credenciales guardadas): entra solo.
+ *   - WiFi guardado ya no funciona: entra solo tras el timeout.
+ *   - Forzado manual: mantener apretado el boton BOOT de la placa
+ *     durante el encendido (3 segundos).
+ *   En modo config, el ESP32 crea la red WiFi "Etiquetadora-Config"
+ *   (clave: configurar en AP_PASSWORD). Conectate desde el celular
+ *   y se abre el formulario. El OLED muestra las instrucciones.
+ *
+ * LIBRERIAS (gestor de bibliotecas del Arduino IDE):
+ *   - WiFiManager (tzapu)
+ *   - ArduinoJson (Benoit Blanchon, v7)
+ *   - Adafruit SSD1306 (+ Adafruit GFX como dependencia)
+ *   (mbedtls y Preferences ya vienen con el core ESP32)
+ *
+ * ------------------------------------------------------------
+ * CONTRATO DE FIRMA HMAC (implementar en el backend Axum):
+ *
+ *   Headers de cada request del dispositivo:
+ *     X-Device-Id:  id del dispositivo (ej: "etiquetadora-01")
+ *     X-Timestamp:  epoch Unix en segundos (UTC)
+ *     X-Signature:  HMAC-SHA256 en hex minusculas
+ *
+ *   Cadena canonica que se firma (separador: '\n'):
+ *     METODO + "\n" + RUTA + "\n" + TIMESTAMP + "\n" + BODY
+ *
+ *   Ejemplos:
+ *     "POST\n/etiquetado/escanear\n1751932800\n{\"codigo\":\"779...\"}"
+ *     "GET\n/etiquetado/estado\n1751932800\n"        (body vacio)
+ *
+ *   Verificacion en el backend:
+ *     1. Buscar el secreto por X-Device-Id (tabla dispositivos;
+ *        el secreto se guarda hasheado NO sirve aca: debe guardarse
+ *        recuperable o en texto claro en la base, porque hay que
+ *        recalcular el HMAC. Restringir acceso a esa tabla.)
+ *     2. Rechazar si |ahora - X-Timestamp| > 300 segundos.
+ *     3. Recalcular HMAC-SHA256(secreto, cadena canonica) y
+ *        comparar con X-Signature en TIEMPO CONSTANTE.
+ *     4. El dispositivo actua con el permiso 'etiquetar' unicamente
+ *        (minimo privilegio, contexto Identidad).
+ * ------------------------------------------------------------
+ *
+ * HARDWARE (sin cambios respecto a v3, plano final ya definido):
+ *   GM65: TX->GPIO25 (UART1). Alimentacion 5V del boost.
+ *   Impresora: UART2 (TX2=17, RX2=16) via conversor de nivel. 5V.
+ *   Buzzer activo: GPIO27. OLED SSD1306: SDA=21, SCL=22, 3.3V.
+ *   Boton BOOT de la placa = GPIO0 (ya viene, no agregar nada).
+ * ============================================================
+ */
+
+#include <WiFi.h>
+#include <WiFiManager.h>
+#include <Preferences.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <mbedtls/md.h>
+#include <time.h>
+
+// ------------------------------------------------------------
+// CONSTANTES
+// ------------------------------------------------------------
+
+#define AP_NAME          "Etiquetadora-Config"
+#define AP_PASSWORD      "kiosco1234"     // clave del portal (cambiala)
+
+#define BOOT_BTN_PIN     0                // boton BOOT de la placa
+#define SCANNER_RX_PIN   25
+#define SCANNER_TX_PIN   26
+#define PRINTER_TX_PIN   17
+#define PRINTER_RX_PIN   16
+#define BUZZER_PIN       27
+
+#define SCANNER_BAUD     9600
+#define PRINTER_BAUD     9600
+
+#define OLED_ANCHO       128
+#define OLED_ALTO        64
+#define OLED_ADDR        0x3C
+
+#define REFRESCO_ESTADO_MS    30000
+#define DURACION_RESULTADO_MS 2500
+
+#define RUTA_ESCANEAR    "/etiquetado/escanear"
+#define RUTA_ESTADO      "/etiquetado/estado"
+
+HardwareSerial &scanner = Serial1;
+HardwareSerial &printer = Serial2;
+Adafruit_SSD1306 oled(OLED_ANCHO, OLED_ALTO, &Wire, -1);
+Preferences prefs;
+
+// Configuracion cargada de NVS
+String cfgBackendUrl;   // ej: http://192.168.0.100:3000
+String cfgDeviceId;     // ej: etiquetadora-01
+String cfgSecret;       // secreto HMAC compartido con el backend
+
+int pendientes = -1;
+unsigned long ultimoRefresco = 0;
+unsigned long mostrarResultadoHasta = 0;
+String bufferScan = "";
+
+// ------------------------------------------------------------
+// BUZZER
+// ------------------------------------------------------------
+
+void bipOk() {
+  digitalWrite(BUZZER_PIN, HIGH); delay(80);
+  digitalWrite(BUZZER_PIN, LOW);
+}
+
+void bipError() {
+  for (int i = 0; i < 2; i++) {
+    digitalWrite(BUZZER_PIN, HIGH); delay(120);
+    digitalWrite(BUZZER_PIN, LOW);  delay(100);
+  }
+}
+
+void bipTriunfal() {
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(BUZZER_PIN, HIGH); delay(70);
+    digitalWrite(BUZZER_PIN, LOW);  delay(80);
+  }
+}
+
+// ------------------------------------------------------------
+// OLED
+// ------------------------------------------------------------
+
+void pantallaBase(const String &l1, const String &l2,
+                  uint8_t s1 = 1, uint8_t s2 = 2) {
+  oled.clearDisplay();
+  oled.setTextColor(SSD1306_WHITE);
+  oled.setTextSize(s1);
+  oled.setCursor(0, 6);
+  oled.println(l1);
+  oled.setTextSize(s2);
+  oled.setCursor(0, 30);
+  oled.println(l2);
+  oled.display();
+}
+
+void pantallaReposo() {
+  if (pendientes < 0)       pantallaBase("Etiquetadora lista", "Sin lote", 1, 2);
+  else if (pendientes == 0) pantallaBase("Recorrido", "COMPLETO", 1, 2);
+  else                      pantallaBase("Pendientes:", String(pendientes), 1, 3);
+}
+
+void pantallaImpreso(const String &nombre, const String &precio) {
+  String n = nombre.length() > 21 ? nombre.substring(0, 21) : nombre;
+  pantallaBase(n, precio, 1, 2);
+  mostrarResultadoHasta = millis() + DURACION_RESULTADO_MS;
+}
+
+void pantallaError(const String &msg) {
+  pantallaBase("ERROR", msg, 2, 1);
+  mostrarResultadoHasta = millis() + DURACION_RESULTADO_MS;
+}
+
+// ------------------------------------------------------------
+// HMAC-SHA256 (mbedtls, incluido en el core ESP32)
+// ------------------------------------------------------------
+
+String hmacSha256Hex(const String &clave, const String &mensaje) {
+  unsigned char out[32];
+  mbedtls_md_context_t ctx;
+  const mbedtls_md_info_t *info =
+      mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+  mbedtls_md_init(&ctx);
+  mbedtls_md_setup(&ctx, info, 1);   // 1 = modo HMAC
+  mbedtls_md_hmac_starts(&ctx,
+      (const unsigned char *)clave.c_str(), clave.length());
+  mbedtls_md_hmac_update(&ctx,
+      (const unsigned char *)mensaje.c_str(), mensaje.length());
+  mbedtls_md_hmac_finish(&ctx, out);
+  mbedtls_md_free(&ctx);
+
+  char hex[65];
+  for (int i = 0; i < 32; i++) sprintf(hex + i * 2, "%02x", out[i]);
+  hex[64] = '\0';
+  return String(hex);
+}
+
+// Firma y ejecuta un request. Devuelve el status HTTP y deja el
+// body de la respuesta en `respuesta`.
+int requestFirmado(const String &metodo, const String &ruta,
+                   const String &body, String &respuesta) {
+  time_t ahora = time(nullptr);
+  if (ahora < 1000000000) {           // reloj sin sincronizar
+    respuesta = "";
+    return -100;                      // codigo propio: sin hora NTP
+  }
+
+  String ts = String((unsigned long)ahora);
+  String canonica = metodo + "\n" + ruta + "\n" + ts + "\n" + body;
+  String firma = hmacSha256Hex(cfgSecret, canonica);
+
+  HTTPClient http;
+  http.begin(cfgBackendUrl + ruta);
+  http.addHeader("X-Device-Id", cfgDeviceId);
+  http.addHeader("X-Timestamp", ts);
+  http.addHeader("X-Signature", firma);
+  http.setTimeout(5000);
+
+  int status;
+  if (metodo == "POST") {
+    http.addHeader("Content-Type", "application/json");
+    status = http.POST(body);
+  } else {
+    status = http.GET();
+  }
+
+  respuesta = (status > 0) ? http.getString() : "";
+  http.end();
+  return status;
+}
+
+// ------------------------------------------------------------
+// ESC/POS
+// ------------------------------------------------------------
+
+void printerInit() {
+  printer.write(0x1B); printer.write('@');
+  delay(50);
+}
+
+void printerAlignCenter() {
+  printer.write(0x1B); printer.write('a'); printer.write((uint8_t)1);
+}
+
+void printerBold(bool on) {
+  printer.write(0x1B); printer.write('E'); printer.write((uint8_t)(on ? 1 : 0));
+}
+
+void printerSize(uint8_t big) {
+  printer.write(0x1D); printer.write('!');
+  printer.write((uint8_t)(big ? 0x11 : 0x00));
+}
+
+void printerFeed(uint8_t lines) {
+  printer.write(0x1B); printer.write('d'); printer.write(lines);
+}
+
+void printerBarcodeEAN13(const String &digits) {
+  printer.write(0x1D); printer.write('h'); printer.write((uint8_t)60);
+  printer.write(0x1D); printer.write('w'); printer.write((uint8_t)2);
+  printer.write(0x1D); printer.write('H'); printer.write((uint8_t)2);
+  printer.write(0x1D); printer.write('k'); printer.write((uint8_t)67);
+  printer.write((uint8_t)digits.length());
+  printer.print(digits);
+  delay(150);
+}
+
+void imprimirEtiqueta(const String &nombre, const String &precio,
+                      const String &codigo) {
+  printerInit();
+  printerAlignCenter();
+  printerBold(true);
+  printerSize(0);
+  printer.println(nombre);
+  printerBold(false);
+  printerSize(1);
+  printer.println(precio);
+  printerSize(0);
+  if (codigo.length() == 12 || codigo.length() == 13) {
+    printer.println();
+    printerBarcodeEAN13(codigo);
+  }
+  printerFeed(3);
+}
+
+// ------------------------------------------------------------
+// CONFIGURACION (NVS + portal cautivo)
+// ------------------------------------------------------------
+
+void cargarConfig() {
+  prefs.begin("config", true);        // solo lectura
+  cfgBackendUrl = prefs.getString("backend", "");
+  cfgDeviceId   = prefs.getString("device", "etiquetadora-01");
+  cfgSecret     = prefs.getString("secret", "");
+  prefs.end();
+}
+
+void guardarConfig() {
+  prefs.begin("config", false);
+  prefs.putString("backend", cfgBackendUrl);
+  prefs.putString("device", cfgDeviceId);
+  prefs.putString("secret", cfgSecret);
+  prefs.end();
+}
+
+// Portal de configuracion. `forzado` = true si vino del boton BOOT.
+void ejecutarPortal(bool forzado) {
+  WiFiManager wm;
+  wm.setConfigPortalTimeout(300);     // 5 min y reinicia
+
+  // Campos personalizados ademas del SSID/clave del WiFi
+  WiFiManagerParameter pBackend(
+      "backend", "URL del backend (http://ip:3000)",
+      cfgBackendUrl.c_str(), 96);
+  WiFiManagerParameter pDevice(
+      "device", "ID del dispositivo",
+      cfgDeviceId.c_str(), 32);
+  WiFiManagerParameter pSecret(
+      "secret", "Secreto HMAC",
+      cfgSecret.c_str(), 96);
+  wm.addParameter(&pBackend);
+  wm.addParameter(&pDevice);
+  wm.addParameter(&pSecret);
+
+  pantallaBase("Configuracion:", "Red:\n" AP_NAME, 1, 1);
+
+  bool ok = forzado
+      ? wm.startConfigPortal(AP_NAME, AP_PASSWORD)
+      : wm.autoConnect(AP_NAME, AP_PASSWORD);
+
+  // Persistir los campos personalizados (el SSID/clave del WiFi
+  // los guarda el propio chip automaticamente)
+  cfgBackendUrl = String(pBackend.getValue());
+  cfgDeviceId   = String(pDevice.getValue());
+  cfgSecret     = String(pSecret.getValue());
+  guardarConfig();
+
+  if (!ok) {
+    pantallaError("Config incompleta");
+    delay(2000);
+    ESP.restart();
+  }
+}
+
+// ------------------------------------------------------------
+// PROCESAR UN ESCANEO
+// ------------------------------------------------------------
+
+void procesarCodigo(const String &codigo) {
+  Serial.print("Escaneado: ");
+  Serial.println(codigo);
+
+  JsonDocument reqDoc;
+  reqDoc["codigo"] = codigo;
+  String body;
+  serializeJson(reqDoc, body);
+
+  String resp;
+  int status = requestFirmado("POST", RUTA_ESCANEAR, body, resp);
+
+  if (status == -100) {
+    pantallaError("Sin hora (NTP)");
+    bipError();
+    return;
+  }
+  if (status == 401 || status == 403) {
+    pantallaError("Firma rechazada");
+    bipError();
+    return;
+  }
+  if (status != 200) {
+    pantallaError(status <= 0 ? "Sin conexion" : "HTTP " + String(status));
+    bipError();
+    return;
+  }
+
+  JsonDocument res;
+  if (deserializeJson(res, resp) != DeserializationError::Ok) {
+    pantallaError("Respuesta invalida");
+    bipError();
+    return;
+  }
+
+  String estado = res["estado"] | "";
+
+  if (estado == "ok") {
+    String nombre = res["nombre"] | "";
+    String precio = res["precio"] | "";
+    String cb     = res["codigo_barras"] | "";
+    pendientes    = res["pendientes_restantes"] | -1;
+
+    imprimirEtiqueta(nombre, precio, cb);
+    pantallaImpreso(nombre, precio);
+    if (pendientes == 0) bipTriunfal();
+    else                 bipOk();
+
+  } else if (estado == "ya_etiquetado")        { pantallaError("Ya etiquetado");      bipError(); }
+    else if (estado == "no_en_recepcion")      { pantallaError("No esta en el lote"); bipError(); }
+    else if (estado == "codigo_desconocido")   { pantallaError("Codigo desconocido"); bipError(); }
+    else if (estado == "sin_recepcion_activa") { pantallaError("Sin lote activo");    bipError(); }
+    else                                       { pantallaError("Estado: " + estado);  bipError(); }
+}
+
+void refrescarEstado() {
+  String resp;
+  int status = requestFirmado("GET", RUTA_ESTADO, "", resp);
+  if (status == 200) {
+    JsonDocument doc;
+    if (deserializeJson(doc, resp) == DeserializationError::Ok) {
+      pendientes = doc["pendientes"] | -1;
+    }
+  }
+  ultimoRefresco = millis();
+}
+
+// ------------------------------------------------------------
+// SETUP / LOOP
+// ------------------------------------------------------------
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("\n=== Etiquetadora autonoma v4 (portal + HMAC) ===");
+
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+  pinMode(BOOT_BTN_PIN, INPUT_PULLUP);
+
+  Wire.begin(21, 22);
+  if (!oled.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
+    Serial.println("OLED no detectado (I2C / addr 0x3C)");
+  }
+  pantallaBase("Etiquetadora", "v4", 1, 2);
+
+  scanner.begin(SCANNER_BAUD, SERIAL_8N1, SCANNER_RX_PIN, SCANNER_TX_PIN);
+  printer.begin(PRINTER_BAUD, SERIAL_8N1, PRINTER_RX_PIN, PRINTER_TX_PIN);
+  delay(300);
+  printerInit();
+
+  cargarConfig();
+
+  // Boton BOOT apretado durante el arranque (3 seg) = forzar portal
+  bool forzarPortal = false;
+  if (digitalRead(BOOT_BTN_PIN) == LOW) {
+    pantallaBase("Solta en 3 seg", "para config", 1, 1);
+    unsigned long t0 = millis();
+    while (digitalRead(BOOT_BTN_PIN) == LOW && millis() - t0 < 3000) delay(50);
+    if (millis() - t0 >= 3000) forzarPortal = true;
+  }
+
+  ejecutarPortal(forzarPortal);       // conecta al WiFi o abre portal
+
+  pantallaBase("Sincronizando", "hora...", 1, 1);
+  configTime(0, 0, "pool.ntp.org", "time.google.com");
+  time_t ahora = time(nullptr);
+  unsigned long t0 = millis();
+  while (ahora < 1000000000 && millis() - t0 < 15000) {
+    delay(200);
+    ahora = time(nullptr);
+  }
+  if (ahora < 1000000000) {
+    pantallaError("Sin hora NTP");
+    bipError();
+    // Sigue igual: cada request va a fallar con -100 hasta que haya
+    // hora, y el error queda claro en pantalla.
+  }
+
+  refrescarEstado();
+  bipOk();
+  pantallaReposo();
+}
+
+void procesarBufferChar(char c) {
+  if (c == '\r' || c == '\n') {
+    if (bufferScan.length() > 0) {
+      String codigo = bufferScan;
+      bufferScan = "";
+      procesarCodigo(codigo);
+    }
+  } else {
+    bufferScan += c;
+    if (bufferScan.length() > 64) bufferScan = "";
+  }
+}
+
+void loop() {
+  while (scanner.available()) procesarBufferChar((char)scanner.read());
+  while (Serial.available())  procesarBufferChar((char)Serial.read());
+
+  unsigned long ahora = millis();
+
+  if (mostrarResultadoHasta > 0 && ahora > mostrarResultadoHasta) {
+    mostrarResultadoHasta = 0;
+    pantallaReposo();
+  }
+
+  if (mostrarResultadoHasta == 0 &&
+      ahora - ultimoRefresco > REFRESCO_ESTADO_MS) {
+    refrescarEstado();
+    pantallaReposo();
+  }
+
+  delay(5);
+}

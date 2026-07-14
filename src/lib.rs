@@ -4,6 +4,7 @@ pub mod clientes;
 pub mod compras;
 pub mod error;
 pub mod estado;
+pub mod etiquetado;
 pub mod identidad;
 pub mod inventario;
 pub mod reportes;
@@ -19,6 +20,7 @@ pub fn armar_router(estado: Estado) -> Router {
         .nest("/identidad", identidad::rutas::router())
         .nest("/catalogo", catalogo::rutas::router())
         .nest("/compras", compras::rutas::router())
+        .nest("/etiquetado", etiquetado::rutas::router(estado.clone()))
         .nest("/inventario", inventario::rutas::router())
         .nest("/ventas", ventas::rutas::router())
         .nest("/clientes", clientes::rutas::router())

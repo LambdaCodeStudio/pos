@@ -1,5 +1,7 @@
 pub mod rutas;
 
+use std::collections::HashMap;
+
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::{Decimal, RoundingStrategy};
 use serde::{Deserialize, Serialize};
@@ -32,15 +34,23 @@ pub struct ItemFiado {
 /// excederlo requiere `exceder_limite_credito`. El fiado es todo-o-nada por
 /// venta (lo exige `sincronizar_venta`): así cada ítem de la venta es,
 /// inequívocamente, un renglón pendiente en `cargo_items`.
+///
+/// `factor_descuento` es `total_centavos / Σ subtotales` de la venta (1 si no
+/// hubo descuento de ticket): queda grabado por renglón para que el FIFO y el
+/// reprecio automático valúen lo pendiente sobre el precio corriente SIN
+/// perder el descuento con el que se fió (ver `aplicar_reduccion_fifo` y
+/// `reindexar_precio_producto`).
 pub async fn registrar_cargo_de_venta(
     tx: &mut Transaction<'_, Postgres>,
     cliente_id: Uuid,
     venta_id: Uuid,
     monto_centavos: i64,
+    factor_descuento: Decimal,
     items: &[ItemFiado],
     usuario: &UsuarioActual,
 ) -> Result<(), ErrorApi> {
     debug_assert!(monto_centavos > 0);
+    debug_assert!(factor_descuento > Decimal::ZERO && factor_descuento <= Decimal::ONE);
 
     let cliente = sqlx::query!(
         r#"SELECT saldo_actual_centavos, limite_credito_centavos, activo
@@ -82,8 +92,8 @@ pub async fn registrar_cargo_de_venta(
         sqlx::query!(
             r#"
             INSERT INTO clientes.cargo_items
-                (id, movimiento_id, cliente_id, producto_id, producto_nombre, cantidad, cantidad_pendiente)
-            VALUES ($1, $2, $3, $4, $5, $6, $6)
+                (id, movimiento_id, cliente_id, producto_id, producto_nombre, cantidad, cantidad_pendiente, factor_descuento)
+            VALUES ($1, $2, $3, $4, $5, $6, $6, $7)
             "#,
             Uuid::now_v7(),
             movimiento_id,
@@ -91,6 +101,7 @@ pub async fn registrar_cargo_de_venta(
             item.producto_id,
             item.producto_nombre,
             item.cantidad,
+            factor_descuento,
         )
         .execute(&mut **tx)
         .await?;
@@ -191,7 +202,7 @@ async fn aplicar_reduccion_fifo(
 
     let pendientes = sqlx::query!(
         r#"
-        SELECT ci.id, ci.cantidad_pendiente, p.precio_actual_centavos
+        SELECT ci.id, ci.cantidad_pendiente, ci.factor_descuento, p.precio_actual_centavos
         FROM clientes.cargo_items ci
         JOIN catalogo.productos p ON p.id = ci.producto_id
         WHERE ci.cliente_id = $1 AND ci.cantidad_pendiente > 0
@@ -211,8 +222,11 @@ async fn aplicar_reduccion_fifo(
         if precio <= Decimal::ZERO {
             continue;
         }
+        // Precio corriente ponderado por el descuento de ticket con el que
+        // se fió este renglón (1 si no hubo descuento).
+        let precio_neto = precio * item.factor_descuento;
 
-        let valor_pendiente_centavos = redondear_centavos(item.cantidad_pendiente * precio);
+        let valor_pendiente_centavos = redondear_centavos(item.cantidad_pendiente * precio_neto);
         if valor_pendiente_centavos <= 0 {
             continue;
         }
@@ -221,7 +235,7 @@ async fn aplicar_reduccion_fifo(
             if monto_centavos >= valor_pendiente_centavos {
                 (item.cantidad_pendiente, valor_pendiente_centavos, Decimal::ZERO)
             } else {
-                let cantidad_aplicada = (Decimal::from(monto_centavos) / precio)
+                let cantidad_aplicada = (Decimal::from(monto_centavos) / precio_neto)
                     .min(item.cantidad_pendiente);
                 (
                     cantidad_aplicada,
@@ -304,24 +318,45 @@ pub async fn reindexar_precio_producto(
     }
     let delta_unitario = Decimal::from(precio_nuevo_centavos - precio_anterior);
 
+    // Sin agregar en SQL: renglones del mismo producto pueden venir de
+    // ventas con distinto descuento de ticket (factor_descuento propio), así
+    // que el delta se pondera por renglón antes de sumar por cliente.
     let pendientes = sqlx::query!(
         r#"
-        SELECT cliente_id, SUM(cantidad_pendiente) AS "cantidad_pendiente!"
+        SELECT cliente_id, cantidad_pendiente, factor_descuento
         FROM clientes.cargo_items
         WHERE producto_id = $1 AND cantidad_pendiente > 0
-        GROUP BY cliente_id
         "#,
         producto_id,
     )
     .fetch_all(&mut **tx)
     .await?;
+    if pendientes.is_empty() {
+        return Ok(());
+    }
 
-    for fila in pendientes {
-        let delta = redondear_centavos(fila.cantidad_pendiente * delta_unitario);
+    let mut deltas_por_cliente: HashMap<Uuid, i64> = HashMap::new();
+    for fila in &pendientes {
+        let delta = redondear_centavos(fila.cantidad_pendiente * delta_unitario * fila.factor_descuento);
         if delta == 0 {
             continue;
         }
+        *deltas_por_cliente.entry(fila.cliente_id).or_insert(0) += delta;
+    }
+    if deltas_por_cliente.is_empty() {
+        return Ok(());
+    }
 
+    // Nombre snapshoteado en el motivo: legible en la cuenta del cliente sin
+    // tener que resolver el UUID.
+    let producto_nombre = sqlx::query_scalar!(
+        r#"SELECT nombre FROM catalogo.productos WHERE id = $1"#,
+        producto_id,
+    )
+    .fetch_one(&mut **tx)
+    .await?;
+
+    for (cliente_id, delta) in deltas_por_cliente {
         sqlx::query!(
             r#"
             INSERT INTO clientes.cuenta_movimientos
@@ -329,15 +364,15 @@ pub async fn reindexar_precio_producto(
             VALUES ($1, $2, 'ajuste', $3, $4, $5)
             "#,
             Uuid::now_v7(),
-            fila.cliente_id,
+            cliente_id,
             delta,
-            format!("reprecio_producto:{producto_id}"),
+            format!("cambio de precio: {producto_nombre}"),
             usuario_id,
         )
         .execute(&mut **tx)
         .await?;
 
-        actualizar_saldo(tx, fila.cliente_id, delta).await?;
+        actualizar_saldo(tx, cliente_id, delta).await?;
     }
 
     Ok(())

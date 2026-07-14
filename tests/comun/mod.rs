@@ -76,3 +76,67 @@ pub async fn pedir(
     };
     (status, json)
 }
+
+/// Crea un dispositivo de etiquetado (contexto Identidad) con secreto
+/// conocido en texto claro, tal como lo necesita el middleware HMAC.
+#[allow(dead_code)]
+pub async fn crear_dispositivo(pool: &PgPool, device_id: &str, secreto: &str) -> Uuid {
+    let id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO identidad.dispositivos (id, device_id, secreto_hmac) VALUES ($1, $2, $3)",
+    )
+    .bind(id)
+    .bind(device_id)
+    .bind(secreto)
+    .execute(pool)
+    .await
+    .expect("crear dispositivo de test");
+    id
+}
+
+/// Recalcula la firma tal como la calcularía el firmware: HMAC-SHA256 sobre
+/// "MÉTODO\nRUTA\nTIMESTAMP\nBODY", en hex minúsculas.
+#[allow(dead_code)]
+pub fn firma_hmac(secreto: &str, metodo: &str, ruta: &str, timestamp: i64, body: &str) -> String {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let canonica = format!("{metodo}\n{ruta}\n{timestamp}\n{body}");
+    let mut mac = Hmac::<Sha256>::new_from_slice(secreto.as_bytes()).expect("clave hmac");
+    mac.update(canonica.as_bytes());
+    hex::encode(mac.finalize().into_bytes())
+}
+
+/// Ejecuta un request firmado como lo haría la etiquetadora ESP32. La firma
+/// se recibe ya calculada (no se recalcula acá) para que los tests puedan
+/// tamperearla deliberadamente.
+#[allow(dead_code)]
+pub async fn pedir_dispositivo(
+    app: &Router,
+    metodo: &str,
+    ruta: &str,
+    device_id: &str,
+    timestamp: i64,
+    firma: &str,
+    body: &str,
+) -> (StatusCode, Value) {
+    let mut req = Request::builder()
+        .method(metodo)
+        .uri(ruta)
+        .header("x-device-id", device_id)
+        .header("x-timestamp", timestamp.to_string())
+        .header("x-signature", firma);
+    if !body.is_empty() {
+        req = req.header("content-type", "application/json");
+    }
+    let req = req.body(Body::from(body.to_string())).unwrap();
+
+    let resp = app.clone().oneshot(req).await.expect("ejecutar request");
+    let status = resp.status();
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null)
+    };
+    (status, json)
+}

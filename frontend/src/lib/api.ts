@@ -82,6 +82,10 @@ export interface ConfiguracionNegocio {
   /** Redondeo comercial del precio calculado en recepciones, en centavos
    *  (0 = sin redondeo; 10000 = al múltiplo de $100 más cercano). */
   redondeo_precio_centavos: number;
+  /** Texto libre que encabeza el ticket impreso (nombre del local, dirección, etc.). */
+  ticket_encabezado: string;
+  /** Texto libre al pie del ticket impreso. */
+  ticket_pie: string;
 }
 
 export interface Categoria {

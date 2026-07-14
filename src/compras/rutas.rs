@@ -32,8 +32,6 @@ pub fn router() -> Router<Estado> {
         .route("/recepciones/{id}/items", put(cargar_item))
         .route("/recepciones/{id}/items/{producto_id}", axum::routing::delete(quitar_item))
         .route("/recepciones/{id}/confirmar", post(confirmar_recepcion))
-        .route("/recepciones/{id}/etiquetas-pendientes", get(etiquetas_pendientes))
-        .route("/recepciones/{id}/items/{item_id}/etiquetar", post(etiquetar_item))
 }
 
 // ---------- Proveedores ----------
@@ -757,133 +755,8 @@ async fn confirmar_recepcion(
     })))
 }
 
-// ---------- Flujo de etiquetado ----------
-
-#[derive(Serialize)]
-struct EtiquetaPendiente {
-    item_id: Uuid,
-    producto_id: Uuid,
-    producto_nombre: String,
-    cantidad: Decimal,
-    precio_final_centavos: i64,
-    codigos_barras: Vec<String>,
-}
-
-/// Ítems pendientes de etiquetar de una recepción, con lo que la PWA necesita
-/// para imprimir la etiqueta en el recorrido físico.
-async fn etiquetas_pendientes(
-    State(estado): State<Estado>,
-    _usuario: UsuarioActual,
-    Path(id): Path<Uuid>,
-) -> Result<Json<Vec<EtiquetaPendiente>>, ErrorApi> {
-    sqlx::query!(r#"SELECT id FROM compras.recepciones WHERE id = $1"#, id)
-        .fetch_optional(&estado.pool)
-        .await?
-        .ok_or(ErrorApi::NoEncontrado)?;
-
-    let filas = sqlx::query!(
-        r#"
-        SELECT ri.id AS item_id, ri.producto_id, pr.nombre AS producto_nombre,
-               ri.cantidad, ri.precio_final_centavos,
-               COALESCE(array_agg(cb.codigo) FILTER (WHERE cb.codigo IS NOT NULL), '{}') AS "codigos_barras!"
-        FROM compras.recepcion_items ri
-        JOIN catalogo.productos pr ON pr.id = ri.producto_id
-        LEFT JOIN catalogo.codigos_barras cb ON cb.producto_id = pr.id
-        WHERE ri.recepcion_id = $1 AND NOT ri.etiquetado
-        GROUP BY ri.id, ri.producto_id, pr.nombre, ri.cantidad, ri.precio_final_centavos, ri.creado_en
-        ORDER BY ri.creado_en
-        "#,
-        id,
-    )
-    .fetch_all(&estado.pool)
-    .await?;
-
-    Ok(Json(
-        filas
-            .into_iter()
-            .map(|f| EtiquetaPendiente {
-                item_id: f.item_id,
-                producto_id: f.producto_id,
-                producto_nombre: f.producto_nombre,
-                cantidad: f.cantidad,
-                precio_final_centavos: f.precio_final_centavos,
-                codigos_barras: f.codigos_barras,
-            })
-            .collect(),
-    ))
-}
-
-/// Marca un ítem como etiquetado (idempotente). Cuando no queda ningún
-/// pendiente, la recepción pasa de confirmada a completada.
-async fn etiquetar_item(
-    State(estado): State<Estado>,
-    usuario: UsuarioActual,
-    Path((recepcion_id, item_id)): Path<(Uuid, Uuid)>,
-) -> Result<Json<serde_json::Value>, ErrorApi> {
-    usuario.exigir(permisos::CONFIRMAR_RECEPCION)?;
-
-    let mut tx = estado.pool.begin().await?;
-
-    let rec = sqlx::query!(
-        r#"SELECT estado AS "estado: EstadoRecepcion" FROM compras.recepciones
-           WHERE id = $1 FOR UPDATE"#,
-        recepcion_id,
-    )
-    .fetch_optional(&mut *tx)
-    .await?
-    .ok_or(ErrorApi::NoEncontrado)?;
-
-    if rec.estado == EstadoRecepcion::Borrador {
-        return Err(ErrorApi::Conflicto(
-            "la recepción todavía no está confirmada".into(),
-        ));
-    }
-
-    let actualizado = sqlx::query!(
-        r#"
-        UPDATE compras.recepcion_items
-        SET etiquetado = true,
-            etiquetado_en = COALESCE(etiquetado_en, now()),
-            etiquetado_por = COALESCE(etiquetado_por, $3),
-            actualizado_en = now()
-        WHERE id = $1 AND recepcion_id = $2
-        RETURNING id
-        "#,
-        item_id,
-        recepcion_id,
-        usuario.id,
-    )
-    .fetch_optional(&mut *tx)
-    .await?;
-    if actualizado.is_none() {
-        return Err(ErrorApi::NoEncontrado);
-    }
-
-    let pendientes = sqlx::query_scalar!(
-        r#"SELECT COUNT(*) AS "pendientes!" FROM compras.recepcion_items
-           WHERE recepcion_id = $1 AND NOT etiquetado"#,
-        recepcion_id,
-    )
-    .fetch_one(&mut *tx)
-    .await?;
-
-    let mut estado_final = rec.estado;
-    if pendientes == 0 && rec.estado == EstadoRecepcion::Confirmada {
-        sqlx::query!(
-            r#"UPDATE compras.recepciones SET estado = 'completada', completada_en = now()
-               WHERE id = $1"#,
-            recepcion_id,
-        )
-        .execute(&mut *tx)
-        .await?;
-        estado_final = EstadoRecepcion::Completada;
-    }
-
-    tx.commit().await?;
-
-    Ok(Json(json!({
-        "ok": true,
-        "pendientes": pendientes,
-        "estado_recepcion": estado_final,
-    })))
-}
+// El flujo de etiquetado (marcar ítem, completar la recepción cuando no
+// queda ningún pendiente) vive ahora en `crate::etiquetado`, bajo el
+// contrato HMAC del dispositivo (ver esa rutas.rs para el reemplazo de los
+// endpoints que estaban acá: GET .../etiquetas-pendientes y POST
+// .../items/{item_id}/etiquetar).

@@ -4,15 +4,24 @@
 //
 //   node servidor.mjs            → http://0.0.0.0:8080 (toda la LAN)
 //   PUERTO=80 API=http://otra-maquina:3000 node servidor.mjs
+//
+// Con TLS_CERT y TLS_KEY seteados (rutas a archivos PEM), sirve por HTTPS en
+// vez de HTTP — necesario para WebUSB (impresión de tickets), que el
+// navegador solo habilita en un contexto seguro:
+//
+//   TLS_CERT=server.crt TLS_KEY=server.key node servidor.mjs
 
-import { createServer, request as requestHttp } from 'node:http';
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createServer as createServerHttp, request as requestHttp } from 'node:http';
+import { createServer as createServerHttps } from 'node:https';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const RAIZ = join(fileURLToPath(new URL('.', import.meta.url)), 'dist');
 const PUERTO = Number(process.env.PUERTO ?? 8080);
 const API = new URL(process.env.API ?? 'http://localhost:3000');
+const TLS_CERT = process.env.TLS_CERT;
+const TLS_KEY = process.env.TLS_KEY;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -35,7 +44,12 @@ function servirArchivo(res, ruta, inmutable = false) {
   createReadStream(ruta).pipe(res);
 }
 
-createServer((req, res) => {
+const usaTls = Boolean(TLS_CERT && TLS_KEY);
+const crearServidor = usaTls
+  ? (manejador) => createServerHttps({ cert: readFileSync(TLS_CERT), key: readFileSync(TLS_KEY) }, manejador)
+  : createServerHttp;
+
+crearServidor((req, res) => {
   const url = new URL(req.url, 'http://x');
 
   // /api/* → backend (sin el prefijo).
@@ -76,5 +90,5 @@ createServer((req, res) => {
   res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
   res.end('no encontrado');
 }).listen(PUERTO, '0.0.0.0', () => {
-  console.log(`POS sirviendo en http://localhost:${PUERTO} (API → ${API.origin})`);
+  console.log(`POS sirviendo en http${usaTls ? 's' : ''}://localhost:${PUERTO} (API → ${API.origin})`);
 });

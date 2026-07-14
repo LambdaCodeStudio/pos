@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT ri.id, ri.etiquetado, ri.precio_final_centavos, pr.nombre AS producto_nombre\n        FROM compras.recepcion_items ri\n        JOIN catalogo.productos pr ON pr.id = ri.producto_id\n        WHERE ri.recepcion_id = $1 AND ri.producto_id = $2\n        FOR UPDATE OF ri\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "etiquetado",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 2,
+        "name": "precio_final_centavos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "producto_nombre",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d8339371e55d54c3e20097b1cdc54c205e936fb7186aae01defd86a12d546fe1"
+}

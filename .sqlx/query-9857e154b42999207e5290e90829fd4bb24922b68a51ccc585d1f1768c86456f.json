@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE compras.recepcion_items\n        SET etiquetado = true,\n            etiquetado_en = now(),\n            etiquetado_por_dispositivo_id = $2,\n            actualizado_en = now()\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9857e154b42999207e5290e90829fd4bb24922b68a51ccc585d1f1768c86456f"
+}

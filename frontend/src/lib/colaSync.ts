@@ -21,13 +21,25 @@ function avisar() {
   for (const oyente of oyentes) oyente();
 }
 
+// Monotónico y no Date.now(): dos sub-cajas pueden encolar en el mismo
+// milisegundo (dos cobros offline casi simultáneos) y el orden de encolado
+// debe preservarse exactamente para que el backend idempotente los procese
+// en la secuencia correcta.
+let ultimaSecuencia = 0;
+
+function proximaSecuencia(): number {
+  const ahora = Date.now();
+  ultimaSecuencia = ahora > ultimaSecuencia ? ahora : ultimaSecuencia + 1;
+  return ultimaSecuencia;
+}
+
 export async function encolar(
   op: Omit<OperacionPendiente, 'secuencia' | 'creado_en' | 'estado'>,
 ): Promise<void> {
   const base = await db();
   await base.put('cola', {
     ...op,
-    secuencia: Date.now(),
+    secuencia: proximaSecuencia(),
     creado_en: new Date().toISOString(),
     estado: 'pendiente',
   });

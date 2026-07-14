@@ -64,15 +64,6 @@ function Contenido({ recepcion, recargar }: { recepcion: Detalle; recargar: () =
     }
   }
 
-  async function etiquetar(itemId: string) {
-    try {
-      await api('POST', `/compras/recepciones/${recepcion.id}/items/${itemId}/etiquetar`);
-      recargar();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'error');
-    }
-  }
-
   return (
     <>
       <Encabezado
@@ -136,9 +127,7 @@ function Contenido({ recepcion, recargar }: { recepcion: Detalle; recargar: () =
                   ) : item.etiquetado ? (
                     <Insignia tono="verde">✓ etiquetado</Insignia>
                   ) : (
-                    <Boton chico variante="secundario" onClick={() => etiquetar(item.id)}>
-                      Marcar etiquetado
-                    </Boton>
+                    <Insignia tono="ambar">pendiente</Insignia>
                   )}
                 </td>
               </tr>

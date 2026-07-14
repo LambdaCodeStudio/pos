@@ -29,6 +29,21 @@ where
     Ok(valor.and_then(|v| v.as_i64()).unwrap_or(0))
 }
 
+/// Texto libre configurado en `catalogo.configuracion` bajo `clave` (p. ej.
+/// encabezado/pie del ticket). Vacío si nunca se configuró.
+pub async fn texto_configurado<'e, E>(ejecutor: E, clave: &str) -> Result<String, ErrorApi>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let valor = sqlx::query_scalar!(
+        r#"SELECT valor FROM catalogo.configuracion WHERE clave = $1"#,
+        clave,
+    )
+    .fetch_optional(ejecutor)
+    .await?;
+    Ok(valor.and_then(|v| v.as_str().map(String::from)).unwrap_or_default())
+}
+
 /// Datos del producto que necesita Compras para cargar un ítem de recepción.
 pub struct ProductoParaCompra {
     pub id: Uuid,

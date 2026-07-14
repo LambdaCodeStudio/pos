@@ -46,6 +46,11 @@ struct Configuracion {
     /// Redondeo comercial del precio calculado en recepciones, en centavos
     /// (0 = sin redondeo; 10000 = al múltiplo de $100 más cercano).
     redondeo_precio_centavos: i64,
+    /// Texto libre que encabeza el ticket impreso (nombre del local,
+    /// dirección, etc.). Vacío si no se configuró.
+    ticket_encabezado: String,
+    /// Texto libre al pie del ticket impreso (p. ej. "Gracias por su compra").
+    ticket_pie: String,
 }
 
 async fn obtener_configuracion(
@@ -54,12 +59,20 @@ async fn obtener_configuracion(
 ) -> Result<Json<Configuracion>, ErrorApi> {
     Ok(Json(Configuracion {
         redondeo_precio_centavos: crate::catalogo::redondeo_precio_configurado(&estado.pool).await?,
+        ticket_encabezado: crate::catalogo::texto_configurado(&estado.pool, "ticket_encabezado").await?,
+        ticket_pie: crate::catalogo::texto_configurado(&estado.pool, "ticket_pie").await?,
     }))
 }
 
 #[derive(Deserialize)]
 struct ActualizarConfiguracion {
     redondeo_precio_centavos: i64,
+    /// `None` = no tocar este campo (para que un PUT de un panel de config no
+    /// pise lo que haya cargado el otro).
+    #[serde(default)]
+    ticket_encabezado: Option<String>,
+    #[serde(default)]
+    ticket_pie: Option<String>,
 }
 
 async fn actualizar_configuracion(
@@ -86,18 +99,48 @@ async fn actualizar_configuracion(
     .execute(&mut *tx)
     .await?;
 
+    let mut auditoria_payload = json!({ "redondeo_precio_centavos": datos.redondeo_precio_centavos });
+
+    if let Some(encabezado) = &datos.ticket_encabezado {
+        sqlx::query!(
+            r#"
+            INSERT INTO catalogo.configuracion (clave, valor, actualizado_en)
+            VALUES ('ticket_encabezado', $1, now())
+            ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor, actualizado_en = now()
+            "#,
+            json!(encabezado),
+        )
+        .execute(&mut *tx)
+        .await?;
+        auditoria_payload["ticket_encabezado"] = json!(encabezado);
+    }
+
+    if let Some(pie) = &datos.ticket_pie {
+        sqlx::query!(
+            r#"
+            INSERT INTO catalogo.configuracion (clave, valor, actualizado_en)
+            VALUES ('ticket_pie', $1, now())
+            ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor, actualizado_en = now()
+            "#,
+            json!(pie),
+        )
+        .execute(&mut *tx)
+        .await?;
+        auditoria_payload["ticket_pie"] = json!(pie);
+    }
+
     auditoria::registrar(
         &mut *tx,
         "configuracion",
         None,
         "actualizar",
         Some(usuario.id),
-        Some(json!({ "redondeo_precio_centavos": datos.redondeo_precio_centavos })),
+        Some(auditoria_payload.clone()),
     )
     .await?;
     tx.commit().await?;
 
-    Ok(Json(json!({ "redondeo_precio_centavos": datos.redondeo_precio_centavos })))
+    Ok(Json(auditoria_payload))
 }
 
 /// Volcado del catálogo vendible para el caché offline de la PWA de caja:

@@ -6,9 +6,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   api, ErrorApi, tienePermiso, usuarioGuardado,
-  type Categoria, type Cliente, type MedioPago, type Producto, type SesionCaja, type VentaResumen,
+  type Categoria, type Cliente, type ConfiguracionNegocio, type MedioPago, type Producto, type SesionCaja,
+  type VentaResumen,
 } from '../lib/api';
-import { buscarLocal, porCodigoLocal, sincronizarCatalogo } from '../lib/catalogoLocal';
+import { buscarLocal, porCodigoLocal, sincronizarCatalogo, upsertProductoLocal } from '../lib/catalogoLocal';
 import {
   alCambiarCola, descartarOperacion, encolar, estadoCola, iniciarSincronizacion,
   operacionesConError, type EstadoCola,
@@ -16,6 +17,8 @@ import {
 import { useConexion } from '../lib/conexion';
 import { borrarMeta, escribirMeta, leerMeta, type ProductoCaja } from '../lib/db';
 import { aCentavos, fechaHora, pesos } from '../lib/formato';
+import { armarTicketEscPos, imprimir, type ItemTicket, type PagoTicket } from '../lib/impresoraTicket';
+import { ModalProducto } from './Productos';
 import Shell, { Encabezado } from './Shell';
 import { Boton, Campo, Cargando, claseInput, EstadoVacio, Insignia, MensajeError, Modal, Tarjeta } from './ui';
 
@@ -36,6 +39,27 @@ interface LineaCarrito {
  */
 const CODIGO_PERSONALIZADO = 'PERSONALIZADO';
 
+/** Respuesta del hot path de escaneo: ya trae todo lo necesario para el ticket. */
+interface CodigoBarrasResuelto {
+  producto_id: string;
+  nombre: string;
+  unidad_de_venta: 'unidad' | 'peso';
+  precio_actual_centavos: number | null;
+  iva_pct: string;
+  activo: boolean;
+}
+
+function aProductoCajaDesdeCodigoBarras(r: CodigoBarrasResuelto, codigo: string): ProductoCaja {
+  return {
+    id: r.producto_id,
+    nombre: r.nombre,
+    unidad_de_venta: r.unidad_de_venta,
+    precio_actual_centavos: r.precio_actual_centavos,
+    iva_pct: r.iva_pct,
+    codigos_barras: [codigo],
+  };
+}
+
 async function productoBasePersonalizado(enLinea: boolean): Promise<ProductoCaja> {
   const local = await porCodigoLocal(CODIGO_PERSONALIZADO);
   if (local) return local;
@@ -45,10 +69,10 @@ async function productoBasePersonalizado(enLinea: boolean): Promise<ProductoCaja
     );
   }
   try {
-    const r = await api<{ producto_id: string }>('GET', `/catalogo/codigos-barras/${CODIGO_PERSONALIZADO}`);
-    const p = await api<Producto>('GET', `/catalogo/productos/${r.producto_id}`);
-    sincronizarCatalogo().catch(() => {});
-    return aProductoCaja(p);
+    const r = await api<CodigoBarrasResuelto>('GET', `/catalogo/codigos-barras/${CODIGO_PERSONALIZADO}`);
+    const p = aProductoCajaDesdeCodigoBarras(r, CODIGO_PERSONALIZADO);
+    upsertProductoLocal(p).catch(() => {});
+    return p;
   } catch (err) {
     if (!(err instanceof ErrorApi) || err.status !== 404) {
       throw err instanceof Error ? err : new Error('error inesperado');
@@ -67,8 +91,9 @@ async function productoBasePersonalizado(enLinea: boolean): Promise<ProductoCaja
     categoria_id: categorias[0].id,
     codigos_barras: [CODIGO_PERSONALIZADO],
   });
-  sincronizarCatalogo().catch(() => {});
-  return aProductoCaja(p);
+  const productoCaja = aProductoCaja(p);
+  upsertProductoLocal(productoCaja).catch(() => {});
+  return productoCaja;
 }
 
 interface SesionLocal {
@@ -360,6 +385,15 @@ function ticketVacio(): Ticket {
  * Arma la venta y decide encolar (offline / sesión local) vs. mandarla directo.
  * La usan tanto el cobro rápido en efectivo como el modal de "otro medio".
  */
+/** Detalle de una venta ya confirmada en el servidor, listo para armar su ticket. */
+interface VentaParaImprimir {
+  items: ItemTicket[];
+  pagos: PagoTicket[];
+  totalCentavos: number;
+  descuentoCentavos: number;
+  vendidaEn: string;
+}
+
 async function ejecutarVenta({
   sesion, enLinea, lineas, total, descuentoCentavos, motivoDescuento, pagos, clienteId,
 }: {
@@ -371,7 +405,7 @@ async function ejecutarVenta({
   motivoDescuento: string;
   pagos: { medio: MedioPago; monto_centavos: number }[];
   clienteId: string | null;
-}): Promise<string> {
+}): Promise<{ mensaje: string; venta: VentaParaImprimir | null }> {
   const hayFiado = pagos.some((p) => p.medio === 'cuenta_corriente');
   const cuerpo = {
     id: crypto.randomUUID(),
@@ -393,6 +427,20 @@ async function ejecutarVenta({
     })),
     pagos,
   };
+  // Ya está todo en memoria al momento de confirmar: no hace falta volver a
+  // pedirle el detalle al servidor para armar el ticket.
+  const ventaParaImprimir: VentaParaImprimir = {
+    items: lineas.map((l) => ({
+      nombre: l.producto.nombre,
+      cantidad: l.cantidad,
+      precioUnitarioCentavos: l.producto.precio_actual_centavos ?? 0,
+      subtotalCentavos: Math.round((l.producto.precio_actual_centavos ?? 0) * l.cantidad),
+    })),
+    pagos: pagos.map((p) => ({ medio: p.medio, montoCentavos: p.monto_centavos })),
+    totalCentavos: total,
+    descuentoCentavos,
+    vendidaEn: cuerpo.vendida_en,
+  };
 
   async function encolarVenta() {
     await encolar({
@@ -402,7 +450,8 @@ async function ejecutarVenta({
       ruta: '/ventas',
       cuerpo,
     });
-    return 'Venta guardada — se sincroniza al volver la conexión ✓';
+    // No existe todavía en el servidor: no se puede imprimir hasta sincronizar.
+    return { mensaje: 'Venta guardada — se sincroniza al volver la conexión ✓', venta: null };
   }
 
   // La venta de una sesión que nació offline debe ir DETRÁS de la
@@ -410,11 +459,26 @@ async function ejecutarVenta({
   if (!enLinea || sesion.local) return encolarVenta();
   try {
     await api('POST', '/ventas', cuerpo);
-    return 'Venta registrada ✓';
+    return { mensaje: 'Venta registrada ✓', venta: ventaParaImprimir };
   } catch (err) {
     if (esFalloDeRed(err) && !hayFiado) return encolarVenta();
     throw err instanceof Error ? err : new Error('error');
   }
+}
+
+/** Arma el ticket ESC/POS con la config del negocio y lo manda a la impresora vinculada por WebUSB. */
+async function imprimirTicket(venta: VentaParaImprimir): Promise<void> {
+  const config = await api<ConfiguracionNegocio>('GET', '/catalogo/configuracion');
+  const bytes = armarTicketEscPos({
+    encabezado: config.ticket_encabezado,
+    pie: config.ticket_pie,
+    items: venta.items,
+    pagos: venta.pagos,
+    totalCentavos: venta.totalCentavos,
+    descuentoCentavos: venta.descuentoCentavos,
+    vendidaEn: venta.vendidaEn,
+  });
+  await imprimir(bytes);
 }
 
 // ---------- Venta ----------
@@ -438,6 +502,8 @@ function Venta({
   const [cerrando, setCerrando] = useState(false);
   const [verVentas, setVerVentas] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
+  /** Última venta confirmada, lista para reimprimir su ticket (F1). */
+  const [ventaImprimible, setVentaImprimible] = useState<VentaParaImprimir | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** Código escaneado que no existe en el catálogo: se ofrece cargarlo ya. */
   const [altaRapida, setAltaRapida] = useState<string | null>(null);
@@ -502,6 +568,9 @@ function Venta({
         return;
       }
       switch (e.key) {
+        case 'F1':
+          if (ventaImprimible) { e.preventDefault(); void imprimirVentaConfirmada(); }
+          break;
         case 'F2':
           e.preventDefault();
           refBusqueda.current?.focus();
@@ -612,9 +681,8 @@ function Venta({
     // Primero como código de barras exacto (el escáner "tipea" y manda Enter).
     if (enLinea) {
       try {
-        const r = await api<{ producto_id: string }>('GET', `/catalogo/codigos-barras/${encodeURIComponent(termino)}`);
-        const p = await api<Producto>('GET', `/catalogo/productos/${r.producto_id}`);
-        agregarProducto(aProductoCaja(p));
+        const r = await api<CodigoBarrasResuelto>('GET', `/catalogo/codigos-barras/${encodeURIComponent(termino)}`);
+        agregarProducto(aProductoCajaDesdeCodigoBarras(r, termino));
         return;
       } catch (err) {
         if (esFalloDeRed(err)) {
@@ -696,7 +764,7 @@ function Venta({
    * recién cobrada se cierra si hay otras abiertas (el cliente ya se fue);
    * si era la única, queda vacía in-place.
    */
-  function ventaConfirmada(mensaje: string) {
+  function ventaConfirmada(mensaje: string, venta: VentaParaImprimir | null) {
     const restantes = tickets.filter((t) => t.id !== activoId);
     if (restantes.length > 0) {
       setTickets(restantes);
@@ -709,8 +777,18 @@ function Venta({
     setDtoAbierto(false);
     setPagando(false);
     setAviso(mensaje);
+    setVentaImprimible(venta);
     window.setTimeout(() => setAviso(null), 3000);
     refBusqueda.current?.focus();
+  }
+
+  async function imprimirVentaConfirmada() {
+    if (!ventaImprimible) return;
+    try {
+      await imprimirTicket(ventaImprimible);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'error al imprimir');
+    }
   }
 
   /** F10 / botón "Cobrar": cobra todo en efectivo, sin modal, pago exacto. */
@@ -719,7 +797,7 @@ function Venta({
     setError(null);
     setCobrandoRapido(true);
     try {
-      const mensaje = await ejecutarVenta({
+      const { mensaje, venta } = await ejecutarVenta({
         sesion,
         enLinea,
         lineas: activo.lineas,
@@ -729,7 +807,7 @@ function Venta({
         pagos: [{ medio: 'efectivo', monto_centavos: total }],
         clienteId: null,
       });
-      ventaConfirmada(mensaje);
+      ventaConfirmada(mensaje, venta);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'error al cobrar');
     } finally {
@@ -810,8 +888,17 @@ function Venta({
       </div>
 
       {aviso && (
-        <div className="mb-4 mt-4 rounded-lg border border-acento-200 bg-acento-50 px-4 py-2.5 text-sm font-medium text-acento-800">
-          {aviso}
+        <div className="mb-4 mt-4 flex items-center justify-between gap-3 rounded-lg border border-acento-200 bg-acento-50 px-4 py-2.5 text-sm font-medium text-acento-800">
+          <span>{aviso}</span>
+          {ventaImprimible && (
+            <button
+              type="button"
+              onClick={() => void imprimirVentaConfirmada()}
+              className="shrink-0 rounded-lg border border-acento-300 bg-white px-2.5 py-1 text-xs font-semibold text-acento-700 transition hover:bg-acento-100"
+            >
+              Imprimir ticket (F1)
+            </button>
+          )}
         </div>
       )}
       <MensajeError error={error} />
@@ -1226,13 +1313,6 @@ function ModalAltaRapida({
 }) {
   const [modo, setModo] = useState<'nuevo' | 'existente'>('nuevo');
 
-  // ---- modo "nuevo": crear un producto y asociarle este código ----
-  const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [nombre, setNombre] = useState('');
-  const [categoriaId, setCategoriaId] = useState('');
-  const [precio, setPrecio] = useState('');
-  const puedePrecio = tienePermiso('modificar_precios');
-
   // ---- modo "existente": el producto ya está cargado, solo falta el código ----
   const [buscar, setBuscar] = useState('');
   const [resultados, setResultados] = useState<Producto[]>([]);
@@ -1241,15 +1321,6 @@ function ModalAltaRapida({
 
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
-
-  useEffect(() => {
-    api<Categoria[]>('GET', '/catalogo/categorias')
-      .then((cs) => {
-        setCategorias(cs);
-        if (cs.length > 0) setCategoriaId((actual) => actual || cs[0].id);
-      })
-      .catch(() => setError('No se pudieron cargar las categorías.'));
-  }, []);
 
   function alEscribirExistente(valor: string) {
     setBuscar(valor);
@@ -1266,27 +1337,11 @@ function ModalAltaRapida({
     }, 200);
   }
 
-  async function guardarNuevo(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    const centavos = puedePrecio ? aCentavos(precio) : null;
-    if (puedePrecio && centavos === null) { setError('Precio inválido'); return; }
-    setGuardando(true);
-    try {
-      const p = await api<Producto>('POST', '/catalogo/productos', {
-        nombre: nombre.trim(),
-        categoria_id: categoriaId,
-        codigos_barras: [codigo],
-      });
-      if (centavos !== null) {
-        await api('POST', `/catalogo/productos/${p.id}/precio`, { precio_centavos: centavos });
-      }
-      sincronizarCatalogo().catch(() => {});
-      onCreado({ ...aProductoCaja(p), precio_actual_centavos: centavos });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'error');
-      setGuardando(false);
-    }
+  function alCrearProducto(p?: Producto) {
+    if (!p) return;
+    const productoCaja = aProductoCaja(p);
+    upsertProductoLocal(productoCaja).catch(() => {});
+    onCreado(productoCaja);
   }
 
   async function asociarExistente(e: React.FormEvent) {
@@ -1296,112 +1351,80 @@ function ModalAltaRapida({
     setGuardando(true);
     try {
       await api('POST', `/catalogo/productos/${elegido.id}/codigos-barras`, { codigo });
-      sincronizarCatalogo().catch(() => {});
-      onCreado(aProductoCaja({ ...elegido, codigos_barras: [...elegido.codigos_barras, codigo] }));
+      const productoCaja = aProductoCaja({ ...elegido, codigos_barras: [...elegido.codigos_barras, codigo] });
+      upsertProductoLocal(productoCaja).catch(() => {});
+      onCreado(productoCaja);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'error');
       setGuardando(false);
     }
   }
 
+  // ModalProducto trae su propio <Modal> (con su título y botones propios),
+  // así que en modo "nuevo" se renderiza solo — anidar dos <Modal> duplicaría
+  // el fondo y el header. El link para pasar a "existente" viaja en `extra`.
+  if (modo === 'nuevo') {
+    return (
+      <ModalProducto
+        producto={null}
+        codigoInicial={codigo}
+        onCerrar={onCerrar}
+        onGuardado={alCrearProducto}
+        extra={
+          <p className="text-sm text-stone-500">
+            ¿El producto <strong className="font-mono text-stone-800">{codigo}</strong> ya está cargado?{' '}
+            <button type="button" onClick={() => setModo('existente')} className="font-medium text-acento-700 hover:underline">
+              Buscarlo por nombre
+            </button>
+          </p>
+        }
+      />
+    );
+  }
+
   return (
     <Modal abierto titulo="Producto no encontrado" onCerrar={onCerrar}>
-      <div className="space-y-4">
+      <form onSubmit={asociarExistente} className="space-y-4">
         <p className="text-sm text-stone-500">
           El código <strong className="font-mono text-stone-800">{codigo}</strong> no está en el catálogo.
+          Buscá el producto que ya está cargado: le agregamos este código sin duplicarlo, o{' '}
+          <button type="button" onClick={() => setModo('nuevo')} className="font-medium text-acento-700 hover:underline">
+            cargalo como producto nuevo
+          </button>.
         </p>
-
-        <div className="grid grid-cols-2 rounded-lg bg-stone-100 p-1 text-sm font-medium">
-          {(['nuevo', 'existente'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setModo(m)}
-              className={`rounded-md py-1.5 transition ${
-                modo === m ? 'bg-white text-stone-800 shadow-sm' : 'text-stone-500 hover:text-stone-700'
-              }`}
-            >
-              {m === 'nuevo' ? 'Producto nuevo' : 'Ya existe en el catálogo'}
-            </button>
-          ))}
+        <div className="relative">
+          <Campo etiqueta="Buscar producto">
+            <input className={claseInput + ' text-base'} value={buscar}
+              onChange={(e) => alEscribirExistente(e.target.value)} autoFocus placeholder="Nombre del producto…" />
+          </Campo>
+          {resultados.length > 0 && (
+            <ul className="absolute z-10 mt-1 w-full divide-y divide-stone-100 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-lg">
+              {resultados.map((p) => (
+                <li key={p.id}>
+                  <button type="button"
+                    className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm hover:bg-acento-50"
+                    onClick={() => { setElegido(p); setBuscar(p.nombre); setResultados([]); }}>
+                    <span className="font-medium text-stone-800">{p.nombre}</span>
+                    <span className="text-stone-500">{pesos(p.precio_actual_centavos)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-
-        {modo === 'nuevo' ? (
-          <form onSubmit={guardarNuevo} className="space-y-4">
-            <p className="text-sm text-stone-500">
-              ¿Lo cargás ahora? Queda asociado al código y va directo al ticket.
-            </p>
-            <Campo etiqueta="Nombre del producto">
-              <input className={claseInput + ' text-base'} value={nombre}
-                onChange={(e) => setNombre(e.target.value)} autoFocus />
-            </Campo>
-            <div className="grid grid-cols-2 gap-4">
-              <Campo etiqueta="Categoría">
-                <select className={claseInput} value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
-                  {categorias.map((c) => (
-                    <option key={c.id} value={c.id}>{c.nombre}</option>
-                  ))}
-                </select>
-              </Campo>
-              {puedePrecio ? (
-                <Campo etiqueta="Precio de venta ($)">
-                  <input className={claseInput + ' text-base font-semibold'} value={precio}
-                    onChange={(e) => setPrecio(e.target.value)} inputMode="decimal" placeholder="0,00" />
-                </Campo>
-              ) : (
-                <p className="self-end pb-2 text-xs text-amber-600">
-                  No tenés permiso para poner precio: el producto se crea sin precio y no se puede vender hasta tenerlo.
-                </p>
-              )}
-            </div>
-            <MensajeError error={error} />
-            <div className="flex justify-end gap-2 pt-1">
-              <Boton variante="secundario" onClick={onCerrar}>No, volver</Boton>
-              <Boton tipo="submit" deshabilitado={guardando || !nombre.trim() || !categoriaId}>
-                {guardando ? 'Cargando…' : 'Cargar y agregar al ticket'}
-              </Boton>
-            </div>
-          </form>
-        ) : (
-          <form onSubmit={asociarExistente} className="space-y-4">
-            <p className="text-sm text-stone-500">
-              Buscá el producto que ya está cargado: le agregamos este código sin duplicarlo.
-            </p>
-            <div className="relative">
-              <Campo etiqueta="Buscar producto">
-                <input className={claseInput + ' text-base'} value={buscar}
-                  onChange={(e) => alEscribirExistente(e.target.value)} autoFocus placeholder="Nombre del producto…" />
-              </Campo>
-              {resultados.length > 0 && (
-                <ul className="absolute z-10 mt-1 w-full divide-y divide-stone-100 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-lg">
-                  {resultados.map((p) => (
-                    <li key={p.id}>
-                      <button type="button"
-                        className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm hover:bg-acento-50"
-                        onClick={() => { setElegido(p); setBuscar(p.nombre); setResultados([]); }}>
-                        <span className="font-medium text-stone-800">{p.nombre}</span>
-                        <span className="text-stone-500">{pesos(p.precio_actual_centavos)}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            {elegido && (
-              <p className="rounded-lg bg-acento-50 px-3 py-2.5 text-sm text-acento-800">
-                Se asocia el código a <strong>{elegido.nombre}</strong> y va directo al ticket.
-              </p>
-            )}
-            <MensajeError error={error} />
-            <div className="flex justify-end gap-2 pt-1">
-              <Boton variante="secundario" onClick={onCerrar}>No, volver</Boton>
-              <Boton tipo="submit" deshabilitado={guardando || !elegido}>
-                {guardando ? 'Asociando…' : 'Asociar código y agregar al ticket'}
-              </Boton>
-            </div>
-          </form>
+        {elegido && (
+          <p className="rounded-lg bg-acento-50 px-3 py-2.5 text-sm text-acento-800">
+            Se asocia el código a <strong>{elegido.nombre}</strong> y va directo al ticket.
+          </p>
         )}
-      </div>
+        <MensajeError error={error} />
+        <div className="flex justify-end gap-2 pt-1">
+          <Boton variante="secundario" onClick={onCerrar}>No, volver</Boton>
+          <Boton tipo="submit" deshabilitado={guardando || !elegido}>
+            {guardando ? 'Asociando…' : 'Asociar código y agregar al ticket'}
+          </Boton>
+        </div>
+      </form>
     </Modal>
   );
 }
@@ -1423,16 +1446,19 @@ function ModalCobro({
   descuentoCentavos: number;
   motivoDescuento: string;
   onCerrar: () => void;
-  onConfirmada: (mensaje: string) => void;
+  onConfirmada: (mensaje: string, venta: VentaParaImprimir | null) => void;
 }) {
   // El efectivo tiene su propio atajo de cobro rápido (F10, sin modal); este
   // modal es para elegir otro medio, así que arranca en tarjeta.
   const [pagos, setPagos] = useState<FilaPago[]>([{ medio: 'tarjeta', monto: (total / 100).toFixed(2).replace('.', ',') }]);
   const [recibido, setRecibido] = useState('');
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [buscarCliente, setBuscarCliente] = useState('');
   const [clienteId, setClienteId] = useState('');
+  const [clienteNombre, setClienteNombre] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
+  const temporizadorCliente = useRef<number | undefined>(undefined);
 
   const hayFiado = pagos.some((p) => p.medio === 'cuenta_corriente');
   const sumaPagos = pagos.reduce((s, p) => s + (aCentavos(p.monto) ?? 0), 0);
@@ -1440,9 +1466,26 @@ function ModalCobro({
   const recibidoCentavos = aCentavos(recibido);
   const vuelto = soloEfectivo && recibidoCentavos !== null ? recibidoCentavos - total : null;
 
+  // Lista inicial (sin buscar) al activar fiado; `buscarClientes` la
+  // reemplaza por resultados server-side a medida que se tipea, así un
+  // negocio con más de 50-200 clientes puede fiarle a cualquiera, no solo a
+  // los primeros alfabéticamente.
   useEffect(() => {
-    if (hayFiado && enLinea) api<Cliente[]>('GET', '/clientes?limite=200').then(setClientes).catch(() => {});
+    if (hayFiado && enLinea) api<Cliente[]>('GET', '/clientes?limite=50').then(setClientes).catch(() => {});
   }, [hayFiado, enLinea]);
+
+  function buscarClientes(valor: string) {
+    setBuscarCliente(valor);
+    setClienteId('');
+    setClienteNombre('');
+    window.clearTimeout(temporizadorCliente.current);
+    temporizadorCliente.current = window.setTimeout(async () => {
+      try {
+        const q = valor.trim() ? `&buscar=${encodeURIComponent(valor.trim())}` : '';
+        setClientes(await api<Cliente[]>('GET', `/clientes?limite=8${q}`));
+      } catch { /* deja la lista anterior a la vista */ }
+    }, 200);
+  }
 
   function cambiarFila(indice: number, cambio: Partial<FilaPago>) {
     // El fiado es todo-o-nada por ticket (no se mezcla con otro medio): al
@@ -1472,7 +1515,7 @@ function ModalCobro({
     }
     setConfirmando(true);
     try {
-      const mensaje = await ejecutarVenta({
+      const { mensaje, venta } = await ejecutarVenta({
         sesion,
         enLinea,
         lineas,
@@ -1482,18 +1525,20 @@ function ModalCobro({
         pagos: pagos.map((p) => ({ medio: p.medio, monto_centavos: aCentavos(p.monto) ?? 0 })),
         clienteId: hayFiado ? clienteId : null,
       });
-      onConfirmada(mensaje);
+      onConfirmada(mensaje, venta);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'error');
       setConfirmando(false);
     }
   }
 
-  // F10 confirma también acá: escanear → F10 → F10 cierra la venta sin mouse.
-  // Sin lista de dependencias a propósito: el manejador siempre ve estado fresco.
+  // F10 o F7 confirman acá: F7 abre el modal (otro medio) → F7 de nuevo lo
+  // confirma, en el mismo espíritu que F10 → F10 para el cobro rápido en
+  // efectivo. Sin lista de dependencias a propósito: el manejador siempre ve
+  // estado fresco.
   useEffect(() => {
     function manejar(e: KeyboardEvent) {
-      if (e.key === 'F10') {
+      if (e.key === 'F10' || e.key === 'F7') {
         e.preventDefault();
         void confirmar();
       }
@@ -1540,14 +1585,34 @@ function ModalCobro({
 
         {hayFiado && enLinea && (
           <Campo etiqueta="Cliente (obligatorio para fiado)">
-            <select className={claseInput} value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-              <option value="">— Elegir cliente —</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre} (debe {pesos(c.saldo_actual_centavos)})
-                </option>
-              ))}
-            </select>
+            {clienteId ? (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-stone-300 px-3 py-2 text-sm">
+                <span className="font-medium text-stone-800">{clienteNombre}</span>
+                <button type="button" onClick={() => { setClienteId(''); setClienteNombre(''); }}
+                  className="text-xs text-stone-400 hover:text-red-600">
+                  Cambiar
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input className={claseInput} value={buscarCliente}
+                  onChange={(e) => buscarClientes(e.target.value)} placeholder="Buscar cliente por nombre…" autoFocus />
+                {clientes.length > 0 && (
+                  <ul className="absolute z-10 mt-1 max-h-56 w-full divide-y divide-stone-100 overflow-y-auto rounded-lg border border-stone-200 bg-white shadow-lg">
+                    {clientes.map((c) => (
+                      <li key={c.id}>
+                        <button type="button"
+                          className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm hover:bg-acento-50"
+                          onClick={() => { setClienteId(c.id); setClienteNombre(c.nombre); setBuscarCliente(''); setClientes([]); }}>
+                          <span className="font-medium text-stone-800">{c.nombre}</span>
+                          <span className="shrink-0 text-stone-500">debe {pesos(c.saldo_actual_centavos)}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </Campo>
         )}
 
@@ -1575,7 +1640,7 @@ function ModalCobro({
         <div className="flex justify-end gap-2 pt-1">
           <Boton variante="secundario" onClick={onCerrar}>Volver</Boton>
           <Boton onClick={confirmar} deshabilitado={confirmando || sumaPagos !== total}>
-            {confirmando ? 'Registrando…' : 'Confirmar venta (F10)'}
+            {confirmando ? 'Registrando…' : 'Confirmar venta (F7/F10)'}
           </Boton>
         </div>
       </div>

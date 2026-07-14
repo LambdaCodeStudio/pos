@@ -23,8 +23,17 @@ Las cuatro fases del backend están completas.
 # Frontend en desarrollo (requiere el backend corriendo en :3000)
 cd frontend; npm run dev      # http://localhost:4321 (proxy /api → :3000)
 
-# Producción en el kiosco: build estática + servidor único (app + proxy /api)
+# Producción: build estática + servidor único (app + proxy /api)
 cd frontend; npm run build; npm run servir   # http://<ip-del-local>:8080
+
+# Con impresión de tickets (WebUSB): el navegador solo la habilita en un
+# contexto seguro, así que en producción hace falta HTTPS (certificado
+# propio alcanza en una LAN interna).
+openssl req -x509 -newkey rsa:2048 -nodes -keyout server.key -out server.crt \
+  -days 3650 -subj "/CN=pos.local" \
+  -addext "subjectAltName=IP:<ip-del-server>,DNS:<hostname-del-server>"
+TLS_CERT=server.crt TLS_KEY=server.key npm run servir   # https://<ip-del-local>:8080
+# Cada dispositivo del mostrador acepta la advertencia de certificado una vez.
 ```
 
 ## Capa offline (PWA)

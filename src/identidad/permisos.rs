@@ -15,6 +15,10 @@ pub const CERRAR_CAJA: &str = "cerrar_caja";
 pub const ABRIR_CAJA: &str = "abrir_caja";
 pub const GESTIONAR_CATALOGO: &str = "gestionar_catalogo";
 pub const GESTIONAR_PROVEEDORES: &str = "gestionar_proveedores";
+/// Único permiso con el que actúa un dispositivo autenticado por HMAC
+/// (contexto Identidad, ver `identidad::dispositivos`), nunca asignado a un
+/// rol de usuario.
+pub const ETIQUETAR: &str = "etiquetar";
 
 pub const TODOS: &[&str] = &[
     VENDER,
@@ -31,6 +35,7 @@ pub const TODOS: &[&str] = &[
     ABRIR_CAJA,
     GESTIONAR_CATALOGO,
     GESTIONAR_PROVEEDORES,
+    ETIQUETAR,
 ];
 
 pub fn es_valido(permiso: &str) -> bool {

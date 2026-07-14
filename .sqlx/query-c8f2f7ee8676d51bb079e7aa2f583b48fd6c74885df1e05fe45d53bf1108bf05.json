@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT r.id\n        FROM compras.recepciones r\n        WHERE r.estado = 'confirmada'\n          AND EXISTS (\n              SELECT 1 FROM compras.recepcion_items ri\n              WHERE ri.recepcion_id = r.id AND NOT ri.etiquetado\n          )\n        ORDER BY r.confirmada_en DESC\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "c8f2f7ee8676d51bb079e7aa2f583b48fd6c74885df1e05fe45d53bf1108bf05"
+}

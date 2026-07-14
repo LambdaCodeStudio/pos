@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::extract::{Path, Query, State};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -434,23 +436,38 @@ async fn sincronizar_venta(
         return Ok(Json(json!({ "id": datos.id, "ya_estaba_sincronizada": true })));
     }
 
+    // Precarga en un solo round-trip (en vez de un SELECT por ítem): un
+    // ticket de 20-30 líneas ya no abre 20-30 idas y vueltas mientras el
+    // FEFO más abajo mantiene locks de lotes.
+    let producto_ids: Vec<Uuid> = {
+        let mut ids: Vec<Uuid> = datos.items.iter().map(|i| i.producto_id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    };
+    let productos: HashMap<Uuid, (String, Decimal)> = sqlx::query!(
+        r#"
+        SELECT p.id, p.nombre, COALESCE(p.iva_pct_override, c.iva_pct) AS "iva_pct!"
+        FROM catalogo.productos p
+        JOIN catalogo.categorias c ON c.id = p.categoria_id
+        WHERE p.id = ANY($1)
+        "#,
+        &producto_ids,
+    )
+    .fetch_all(&mut *tx)
+    .await?
+    .into_iter()
+    .map(|f| (f.id, (f.nombre, f.iva_pct)))
+    .collect();
+
     let mut items_fiado = Vec::new();
     for item in &datos.items {
         // Snapshots: lo que mandó el dispositivo manda; el catálogo completa.
-        let producto = sqlx::query!(
-            r#"
-            SELECT p.nombre, COALESCE(p.iva_pct_override, c.iva_pct) AS "iva_pct!"
-            FROM catalogo.productos p
-            JOIN catalogo.categorias c ON c.id = p.categoria_id
-            WHERE p.id = $1
-            "#,
-            item.producto_id,
-        )
-        .fetch_optional(&mut *tx)
-        .await?
-        .ok_or_else(|| ErrorApi::Validacion("producto inexistente en la venta".into()))?;
+        let (nombre_catalogo, iva_pct_catalogo) = productos
+            .get(&item.producto_id)
+            .ok_or_else(|| ErrorApi::Validacion("producto inexistente en la venta".into()))?;
 
-        let producto_nombre = item.producto_nombre.as_deref().unwrap_or(&producto.nombre);
+        let producto_nombre = item.producto_nombre.as_deref().unwrap_or(nombre_catalogo);
 
         let item_id = Uuid::now_v7();
         sqlx::query!(
@@ -466,7 +483,7 @@ async fn sincronizar_venta(
             producto_nombre,
             item.precio_unitario_centavos,
             item.cantidad,
-            item.iva_pct.unwrap_or(producto.iva_pct),
+            item.iva_pct.unwrap_or(*iva_pct_catalogo),
             item.descuento_centavos,
             item.descuento_motivo,
             item.subtotal_centavos,
@@ -509,13 +526,20 @@ async fn sincronizar_venta(
     }
 
     // El fiado inserta su cargo en el ledger de Clientes en ESTA transacción,
-    // referenciando la venta. El límite de crédito bloquea acá.
+    // referenciando la venta. El límite de crédito bloquea acá. El factor de
+    // descuento (1 si no hubo descuento de ticket) queda grabado por renglón
+    // para que el reprecio y el FIFO de pagos no ignoren el descuento con el
+    // que se fió (suma_subtotales > 0 siempre que haya fiado: ver validación
+    // de invariantes más arriba).
     if monto_cuenta_corriente > 0 {
+        let factor_descuento_fiado =
+            Decimal::from(datos.total_centavos) / Decimal::from(suma_subtotales);
         crate::clientes::registrar_cargo_de_venta(
             &mut tx,
             datos.cliente_id.unwrap(),
             datos.id,
             monto_cuenta_corriente,
+            factor_descuento_fiado,
             &items_fiado,
             &usuario,
         )

@@ -1,9 +1,10 @@
 // Catálogo: productos con búsqueda tolerante a typos (pg_trgm en el back),
 // alta/edición, códigos de barras, cambio manual de precio; y categorías.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { api, tienePermiso, type Categoria, type ConfiguracionNegocio, type Producto } from '../lib/api';
 import { aCentavos, desdeCentavos, pesos, redondearComercial } from '../lib/formato';
+import { impresoraVinculada, vincularImpresora } from '../lib/impresoraTicket';
 import Shell, { Encabezado } from './Shell';
 import { Boton, Campo, Cargando, claseInput, EstadoVacio, Insignia, MensajeError, Modal, Tabla, Tarjeta } from './ui';
 
@@ -44,6 +45,7 @@ function TablaProductos() {
   const [precioDe, setPrecioDe] = useState<Producto | null>(null);
   const [eliminando, setEliminando] = useState<Producto | null>(null);
   const [configurandoRedondeo, setConfigurandoRedondeo] = useState(false);
+  const [configurandoTicket, setConfigurandoTicket] = useState(false);
   const temporizador = useRef<number | undefined>(undefined);
 
   const cargar = useCallback((termino: string) => {
@@ -75,6 +77,11 @@ function TablaProductos() {
         {puedePrecios && (
           <Boton variante="secundario" onClick={() => setConfigurandoRedondeo(true)}>
             Redondeo de precios
+          </Boton>
+        )}
+        {puedePrecios && (
+          <Boton variante="secundario" onClick={() => setConfigurandoTicket(true)}>
+            Configuración del ticket
           </Boton>
         )}
         {puedeGestionar && <Boton onClick={() => setEditando('nuevo')}>+ Nuevo producto</Boton>}
@@ -138,6 +145,7 @@ function TablaProductos() {
         />
       )}
       {configurandoRedondeo && <ModalRedondeo onCerrar={() => setConfigurandoRedondeo(false)} />}
+      {configurandoTicket && <ModalConfiguracionTicket onCerrar={() => setConfigurandoTicket(false)} />}
       {eliminando && (
         <ModalEliminarProducto
           producto={eliminando}
@@ -261,12 +269,109 @@ function ModalRedondeo({ onCerrar }: { onCerrar: () => void }) {
   );
 }
 
+// ---------- Configuración del ticket impreso ----------
+
+function ModalConfiguracionTicket({ onCerrar }: { onCerrar: () => void }) {
+  const [config, setConfig] = useState<ConfiguracionNegocio | null>(null);
+  const [encabezado, setEncabezado] = useState('');
+  const [pie, setPie] = useState('');
+  const [vinculada, setVinculada] = useState(false);
+  const [vinculando, setVinculando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    api<ConfiguracionNegocio>('GET', '/catalogo/configuracion')
+      .then((c) => { setConfig(c); setEncabezado(c.ticket_encabezado); setPie(c.ticket_pie); })
+      .catch(() => setError('No se pudo leer la configuración.'));
+    impresoraVinculada().then(setVinculada).catch(() => {});
+  }, []);
+
+  async function vincular() {
+    setError(null);
+    setVinculando(true);
+    try {
+      await vincularImpresora();
+      setVinculada(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'error al vincular la impresora');
+    } finally {
+      setVinculando(false);
+    }
+  }
+
+  async function guardar(e: React.FormEvent) {
+    e.preventDefault();
+    if (config === null) return;
+    setError(null);
+    setGuardando(true);
+    try {
+      await api('PUT', '/catalogo/configuracion', {
+        redondeo_precio_centavos: config.redondeo_precio_centavos,
+        ticket_encabezado: encabezado,
+        ticket_pie: pie,
+      });
+      onCerrar();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'error');
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Modal abierto titulo="Configuración del ticket" onCerrar={onCerrar} ancho="max-w-md">
+      {config === null ? (
+        <Cargando />
+      ) : (
+        <form onSubmit={guardar} className="space-y-4">
+          <Campo etiqueta="Encabezado (nombre del local, dirección, etc.)">
+            <textarea
+              className={claseInput + ' min-h-20'}
+              value={encabezado}
+              onChange={(e) => setEncabezado(e.target.value)}
+              placeholder={'Kiosco Don José\nAv. Siempre Viva 123'}
+            />
+          </Campo>
+          <Campo etiqueta="Pie (mensaje de despedida, redes sociales, etc.)">
+            <textarea
+              className={claseInput + ' min-h-16'}
+              value={pie}
+              onChange={(e) => setPie(e.target.value)}
+              placeholder="¡Gracias por su compra!"
+            />
+          </Campo>
+          <div className="space-y-2.5 rounded-lg border border-stone-200 bg-stone-50 px-3.5 py-3">
+            <p className="text-sm text-stone-500">
+              La impresora se vincula por dispositivo (cada PC del mostrador la vincula una
+              vez, desde Chrome o Edge con conexión USB directa).
+            </p>
+            <Boton
+              tipo="button"
+              variante="secundario"
+              deshabilitado={vinculando}
+              onClick={() => void vincular()}
+            >
+              {vinculando ? 'Vinculando…' : vinculada ? 'Impresora vinculada ✓ — cambiar' : 'Vincular impresora'}
+            </Boton>
+          </div>
+          <MensajeError error={error} />
+          <div className="flex justify-end gap-2">
+            <Boton variante="secundario" onClick={onCerrar}>Cancelar</Boton>
+            <Boton tipo="submit" deshabilitado={guardando}>{guardando ? 'Guardando…' : 'Guardar'}</Boton>
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
 export function ModalProducto({
   producto,
   nombreInicial,
   codigoInicial,
   onCerrar,
   onGuardado,
+  extra,
 }: {
   producto: Producto | null;
   /** Precarga desde otras pantallas (p. ej. "crear producto nuevo" en recepciones). */
@@ -275,6 +380,8 @@ export function ModalProducto({
   onCerrar: () => void;
   /** En alta, recibe el producto recién creado para que quien abrió el modal pueda usarlo. */
   onGuardado: (producto?: Producto) => void;
+  /** Contenido adicional al pie del formulario (p. ej. un link a un flujo alternativo). */
+  extra?: ReactNode;
 }) {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [nombre, setNombre] = useState(producto?.nombre ?? nombreInicial ?? '');
@@ -363,7 +470,7 @@ export function ModalProducto({
         if (centavos !== null) {
           await api('POST', `/catalogo/productos/${p.id}/precio`, { precio_centavos: centavos });
         }
-        onGuardado(p);
+        onGuardado(centavos !== null ? { ...p, precio_actual_centavos: centavos } : p);
         return;
       }
       onGuardado();
@@ -436,6 +543,7 @@ export function ModalProducto({
         <Campo etiqueta="Códigos de barras (uno por línea)">
           <textarea className={claseInput} rows={2} value={codigos} onChange={(e) => setCodigos(e.target.value)} />
         </Campo>
+        {extra}
         <MensajeError error={error} />
         <div className="flex justify-end gap-2 pt-1">
           <Boton variante="secundario" onClick={onCerrar}>Cancelar</Boton>

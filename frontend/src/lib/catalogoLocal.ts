@@ -26,6 +26,22 @@ export async function sincronizarCatalogo(): Promise<void> {
   await tx.done;
 }
 
+/**
+ * Agrega/actualiza un único producto (y sus códigos) en la copia local sin
+ * bajar el catálogo entero — para cuando se lo acaba de crear o asociarle un
+ * código desde la caja (alta rápida). Evita un `sincronizarCatalogo()`
+ * completo (fetch + clear + reinserción de todo el catálogo) por cada alta.
+ */
+export async function upsertProductoLocal(p: ProductoCaja): Promise<void> {
+  const base = await db();
+  const tx = base.transaction(['productos', 'codigos'], 'readwrite');
+  await tx.objectStore('productos').put(p);
+  for (const codigo of p.codigos_barras) {
+    await tx.objectStore('codigos').put({ codigo, producto_id: p.id });
+  }
+  await tx.done;
+}
+
 export async function ultimaSincronizacion(): Promise<string | undefined> {
   return (await (await db()).get('meta', 'catalogo_sincronizado_en')) as string | undefined;
 }

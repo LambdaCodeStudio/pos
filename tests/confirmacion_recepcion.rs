@@ -6,7 +6,7 @@ mod comun;
 
 use axum::http::StatusCode;
 use rust_decimal::Decimal;
-use serde_json::{json, Value};
+use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -215,17 +215,17 @@ async fn confirmar_aplica_precios_stock_y_lotes(pool: PgPool) {
     .unwrap();
     assert_eq!(movimientos_con_lote, 1);
 
-    // Los ítems quedan pendientes de etiquetado.
-    let (st, pendientes) = pedir(
-        &esc.app,
-        "GET",
-        &format!("/compras/recepciones/{}/etiquetas-pendientes", esc.recepcion_id),
-        Some(&esc.token),
-        None,
+    // Los ítems quedan pendientes de etiquetado (el flujo de marcarlos vive
+    // en `crate::etiquetado`, bajo el contrato HMAC del dispositivo — ver
+    // tests/etiquetado.rs).
+    let pendientes = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM compras.recepcion_items WHERE recepcion_id = $1 AND NOT etiquetado",
     )
-    .await;
-    assert_eq!(st, StatusCode::OK);
-    assert_eq!(pendientes.as_array().unwrap().len(), 2);
+    .bind(esc.recepcion_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(pendientes, 2);
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -403,81 +403,4 @@ async fn no_confirma_recepcion_vacia(pool: PgPool) {
             .await
             .unwrap();
     assert_eq!(estado, "borrador", "nada aplicado a medias");
-}
-
-#[sqlx::test(migrations = "./migrations")]
-async fn etiquetado_completa_la_recepcion(pool: PgPool) {
-    let esc = armar_escenario(&pool).await;
-    cargar_items_estandar(&esc).await;
-
-    let (st, _) = pedir(
-        &esc.app,
-        "POST",
-        &format!("/compras/recepciones/{}/confirmar", esc.recepcion_id),
-        Some(&esc.token),
-        None,
-    )
-    .await;
-    assert_eq!(st, StatusCode::OK);
-
-    let (_, pendientes) = pedir(
-        &esc.app,
-        "GET",
-        &format!("/compras/recepciones/{}/etiquetas-pendientes", esc.recepcion_id),
-        Some(&esc.token),
-        None,
-    )
-    .await;
-    let items: Vec<Value> = pendientes.as_array().unwrap().clone();
-    assert_eq!(items.len(), 2);
-
-    // Etiquetar el primero: la recepción sigue confirmada.
-    let (st, resp) = pedir(
-        &esc.app,
-        "POST",
-        &format!(
-            "/compras/recepciones/{}/items/{}/etiquetar",
-            esc.recepcion_id,
-            items[0]["item_id"].as_str().unwrap()
-        ),
-        Some(&esc.token),
-        None,
-    )
-    .await;
-    assert_eq!(st, StatusCode::OK);
-    assert_eq!(resp["estado_recepcion"], "confirmada");
-    assert_eq!(resp["pendientes"], 1);
-
-    // Reintento idempotente del mismo ítem: sigue 200 y sigue 1 pendiente.
-    let (st, resp) = pedir(
-        &esc.app,
-        "POST",
-        &format!(
-            "/compras/recepciones/{}/items/{}/etiquetar",
-            esc.recepcion_id,
-            items[0]["item_id"].as_str().unwrap()
-        ),
-        Some(&esc.token),
-        None,
-    )
-    .await;
-    assert_eq!(st, StatusCode::OK, "{resp}");
-    assert_eq!(resp["pendientes"], 1);
-
-    // Etiquetar el último: pasa a completada.
-    let (st, resp) = pedir(
-        &esc.app,
-        "POST",
-        &format!(
-            "/compras/recepciones/{}/items/{}/etiquetar",
-            esc.recepcion_id,
-            items[1]["item_id"].as_str().unwrap()
-        ),
-        Some(&esc.token),
-        None,
-    )
-    .await;
-    assert_eq!(st, StatusCode::OK, "{resp}");
-    assert_eq!(resp["estado_recepcion"], "completada");
-    assert_eq!(resp["pendientes"], 0);
 }

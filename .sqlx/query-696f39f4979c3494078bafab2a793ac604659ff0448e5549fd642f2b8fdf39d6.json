@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT COUNT(*) AS \"n!\"\n        FROM compras.recepcion_items\n        WHERE recepcion_id = $1 AND NOT etiquetado\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "n!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "696f39f4979c3494078bafab2a793ac604659ff0448e5549fd642f2b8fdf39d6"
+}
