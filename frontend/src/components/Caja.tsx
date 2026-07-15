@@ -780,15 +780,21 @@ function Venta({
     setVentaImprimible(venta);
     window.setTimeout(() => setAviso(null), 3000);
     refBusqueda.current?.focus();
+    if (venta) void imprimirVenta(venta);
   }
 
+  async function imprimirVenta(venta: VentaParaImprimir) {
+    try {
+      await imprimirTicket(venta);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'error al imprimir el ticket');
+    }
+  }
+
+  /** Botón "Reimprimir" (F1): repite el último ticket, por si se trabó el papel o se cerró la impresora. */
   async function imprimirVentaConfirmada() {
     if (!ventaImprimible) return;
-    try {
-      await imprimirTicket(ventaImprimible);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'error al imprimir');
-    }
+    await imprimirVenta(ventaImprimible);
   }
 
   /** F10 / botón "Cobrar": cobra todo en efectivo, sin modal, pago exacto. */
@@ -896,7 +902,7 @@ function Venta({
               onClick={() => void imprimirVentaConfirmada()}
               className="shrink-0 rounded-lg border border-acento-300 bg-white px-2.5 py-1 text-xs font-semibold text-acento-700 transition hover:bg-acento-100"
             >
-              Imprimir ticket (F1)
+              Reimprimir ticket (F1)
             </button>
           )}
         </div>

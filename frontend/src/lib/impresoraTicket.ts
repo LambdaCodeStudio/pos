@@ -12,7 +12,7 @@
 import type { MedioPago } from './api';
 import { cantidad, fechaHora, pesos } from './formato';
 
-const ANCHO = 48; // columnas a 80mm
+export const ANCHO = 48; // columnas a 80mm
 
 const ETIQUETAS_MEDIO: Record<MedioPago, string> = {
   efectivo: 'Efectivo',
@@ -143,6 +143,60 @@ function centrado(texto: string, ancho: number): string {
 function dosColumnas(izquierda: string, derecha: string, ancho: number): string {
   const espacio = Math.max(1, ancho - izquierda.length - derecha.length);
   return izquierda + ' '.repeat(espacio) + derecha;
+}
+
+export interface LineaTicket {
+  texto: string;
+  negrita?: boolean;
+  centrada?: boolean;
+}
+
+/**
+ * Arma las líneas del ticket para mostrarlas en pantalla (vista previa de
+ * Configuración del ticket). Tiene que reflejar el mismo contenido y orden
+ * que `armarTicketEscPos` — no comparten código porque esa función manda
+ * comandos ESC/POS binarios y esta arma texto para HTML, así que un cambio
+ * de layout en una hay que replicarlo en la otra.
+ */
+export function vistaPreviaTicket(datos: DatosTicket): LineaTicket[] {
+  const lineas: LineaTicket[] = [];
+
+  const encabezado = datos.encabezado.trim();
+  if (encabezado) {
+    for (const l of encabezado.split('\n')) {
+      for (const envuelta of envolver(l, ANCHO)) lineas.push({ texto: envuelta, negrita: true, centrada: true });
+    }
+    lineas.push({ texto: '' });
+  }
+  lineas.push({ texto: fechaHora(datos.vendidaEn) });
+  lineas.push({ texto: '-'.repeat(ANCHO) });
+
+  for (const item of datos.items) {
+    for (const l of envolver(item.nombre, ANCHO)) lineas.push({ texto: l });
+    const detalle = `${cantidad(item.cantidad)} x ${pesos(item.precioUnitarioCentavos)}`;
+    lineas.push({ texto: dosColumnas(detalle, pesos(item.subtotalCentavos), ANCHO) });
+  }
+  lineas.push({ texto: '-'.repeat(ANCHO) });
+
+  if (datos.descuentoCentavos > 0) {
+    lineas.push({ texto: dosColumnas('Descuento', `-${pesos(datos.descuentoCentavos)}`, ANCHO) });
+  }
+  lineas.push({ texto: dosColumnas('TOTAL', pesos(datos.totalCentavos), ANCHO), negrita: true });
+  lineas.push({ texto: '' });
+
+  for (const pago of datos.pagos) {
+    lineas.push({ texto: dosColumnas(ETIQUETAS_MEDIO[pago.medio] ?? pago.medio, pesos(pago.montoCentavos), ANCHO) });
+  }
+
+  const pie = datos.pie.trim();
+  if (pie) {
+    lineas.push({ texto: '' });
+    for (const l of pie.split('\n')) {
+      for (const envuelta of envolver(l, ANCHO)) lineas.push({ texto: envuelta, centrada: true });
+    }
+  }
+
+  return lineas;
 }
 
 export function armarTicketEscPos(datos: DatosTicket): Uint8Array {

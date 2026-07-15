@@ -4,7 +4,16 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { api, tienePermiso, type Categoria, type ConfiguracionNegocio, type Producto } from '../lib/api';
 import { aCentavos, desdeCentavos, pesos, redondearComercial } from '../lib/formato';
-import { impresoraVinculada, vincularImpresora } from '../lib/impresoraTicket';
+import {
+  ANCHO,
+  armarTicketEscPos,
+  imprimir,
+  impresoraVinculada,
+  vincularImpresora,
+  vistaPreviaTicket,
+  type DatosTicket,
+  type ItemTicket,
+} from '../lib/impresoraTicket';
 import Shell, { Encabezado } from './Shell';
 import { Boton, Campo, Cargando, claseInput, EstadoVacio, Insignia, MensajeError, Modal, Tabla, Tarjeta } from './ui';
 
@@ -271,12 +280,92 @@ function ModalRedondeo({ onCerrar }: { onCerrar: () => void }) {
 
 // ---------- Configuración del ticket impreso ----------
 
+// Venta de ejemplo para la vista previa: no sale a ningún lado, solo se usa
+// para mostrar cómo quedan el encabezado/pie en un ticket real.
+const EJEMPLO_ITEMS: ItemTicket[] = [
+  { nombre: 'Coca-Cola 500ml', cantidad: 2, precioUnitarioCentavos: 150_000, subtotalCentavos: 300_000 },
+  { nombre: 'Alfajor Jorgito triple', cantidad: 1, precioUnitarioCentavos: 90_000, subtotalCentavos: 90_000 },
+  { nombre: 'Pan lactal Bimbo', cantidad: 1, precioUnitarioCentavos: 210_000, subtotalCentavos: 210_000 },
+];
+const EJEMPLO_TOTAL = 600_000;
+
+function datosEjemplo(encabezado: string, pie: string): DatosTicket {
+  return {
+    encabezado,
+    pie,
+    items: EJEMPLO_ITEMS,
+    pagos: [{ medio: 'efectivo', montoCentavos: EJEMPLO_TOTAL }],
+    totalCentavos: EJEMPLO_TOTAL,
+    descuentoCentavos: 0,
+    vendidaEn: new Date().toISOString(),
+  };
+}
+
+/** La línea más larga (sin contar saltos): si pasa las 48 columnas, se corta y sigue abajo. */
+function lineaMasLarga(texto: string): number {
+  return texto.split('\n').reduce((max, l) => Math.max(max, l.trim().length), 0);
+}
+
+function CampoTicket({
+  etiqueta,
+  ayuda,
+  placeholder,
+  valor,
+  onChange,
+}: {
+  etiqueta: string;
+  ayuda: string;
+  placeholder: string;
+  valor: string;
+  onChange: (v: string) => void;
+}) {
+  const larga = lineaMasLarga(valor);
+  return (
+    <Campo etiqueta={etiqueta} ayuda={ayuda}>
+      <textarea
+        className={claseInput + ' min-h-20'}
+        value={valor}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+      {larga > ANCHO && (
+        <span className="mt-1 block text-xs text-amber-600">
+          Una línea tiene {larga} caracteres — el ticket entra {ANCHO} por línea, va a seguir en la de abajo.
+        </span>
+      )}
+    </Campo>
+  );
+}
+
+function VistaPreviaTicket({ encabezado, pie }: { encabezado: string; pie: string }) {
+  const lineas = vistaPreviaTicket(datosEjemplo(encabezado, pie));
+  return (
+    <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-stone-400">Vista previa</p>
+      <div className="overflow-x-auto rounded-md border border-dashed border-stone-300 bg-white px-3 py-3 shadow-inner">
+        <div className="whitespace-pre font-mono text-[11px] leading-snug text-stone-800">
+          {lineas.map((l, i) => (
+            <div key={i} className={`${l.centrada ? 'text-center' : ''} ${l.negrita ? 'font-bold' : ''}`}>
+              {l.texto || ' '}
+            </div>
+          ))}
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-stone-400">
+        Con una venta de ejemplo — así se ve el ticket real, con tus productos y totales.
+      </p>
+    </div>
+  );
+}
+
 function ModalConfiguracionTicket({ onCerrar }: { onCerrar: () => void }) {
   const [config, setConfig] = useState<ConfiguracionNegocio | null>(null);
   const [encabezado, setEncabezado] = useState('');
   const [pie, setPie] = useState('');
   const [vinculada, setVinculada] = useState(false);
   const [vinculando, setVinculando] = useState(false);
+  const [imprimiendo, setImprimiendo] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
 
@@ -300,6 +389,20 @@ function ModalConfiguracionTicket({ onCerrar }: { onCerrar: () => void }) {
     }
   }
 
+  async function imprimirPrueba() {
+    setError(null);
+    setAviso(null);
+    setImprimiendo(true);
+    try {
+      await imprimir(armarTicketEscPos(datosEjemplo(encabezado, pie)));
+      setAviso('Ticket de prueba enviado a la impresora.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'error al imprimir');
+    } finally {
+      setImprimiendo(false);
+    }
+  }
+
   async function guardar(e: React.FormEvent) {
     e.preventDefault();
     if (config === null) return;
@@ -319,45 +422,62 @@ function ModalConfiguracionTicket({ onCerrar }: { onCerrar: () => void }) {
   }
 
   return (
-    <Modal abierto titulo="Configuración del ticket" onCerrar={onCerrar} ancho="max-w-md">
+    <Modal abierto titulo="Configuración del ticket" onCerrar={onCerrar} ancho="max-w-3xl">
       {config === null ? (
         <Cargando />
       ) : (
-        <form onSubmit={guardar} className="space-y-4">
-          <Campo etiqueta="Encabezado (nombre del local, dirección, etc.)">
-            <textarea
-              className={claseInput + ' min-h-20'}
-              value={encabezado}
-              onChange={(e) => setEncabezado(e.target.value)}
-              placeholder={'Kiosco Don José\nAv. Siempre Viva 123'}
-            />
-          </Campo>
-          <Campo etiqueta="Pie (mensaje de despedida, redes sociales, etc.)">
-            <textarea
-              className={claseInput + ' min-h-16'}
-              value={pie}
-              onChange={(e) => setPie(e.target.value)}
-              placeholder="¡Gracias por su compra!"
-            />
-          </Campo>
-          <div className="space-y-2.5 rounded-lg border border-stone-200 bg-stone-50 px-3.5 py-3">
+        <form onSubmit={guardar} className="grid grid-cols-1 gap-6 sm:grid-cols-[1fr_260px]">
+          <div className="space-y-4">
             <p className="text-sm text-stone-500">
-              La impresora se vincula por dispositivo (cada PC del mostrador la vincula una
-              vez, desde Chrome o Edge con conexión USB directa).
+              Esto es lo que se imprime arriba y abajo de cada ticket. Cada línea que escribas
+              sale igual en el papel — mejor varias líneas cortas que una sola larga.
             </p>
-            <Boton
-              tipo="button"
-              variante="secundario"
-              deshabilitado={vinculando}
-              onClick={() => void vincular()}
-            >
-              {vinculando ? 'Vinculando…' : vinculada ? 'Impresora vinculada ✓ — cambiar' : 'Vincular impresora'}
-            </Boton>
+            <CampoTicket
+              etiqueta="Encabezado"
+              ayuda="Nombre del local, dirección, CUIT — va centrado y en negrita, arriba de todo."
+              placeholder={'Kiosco Don José\nAv. Siempre Viva 123\nCUIT 20-12345678-9'}
+              valor={encabezado}
+              onChange={setEncabezado}
+            />
+            <CampoTicket
+              etiqueta="Pie"
+              ayuda="Mensaje de despedida, redes sociales, horario — va centrado, al final del ticket."
+              placeholder={'¡Gracias por su compra!\nSeguinos en @kioscodonjose'}
+              valor={pie}
+              onChange={setPie}
+            />
+            <div className="space-y-2.5 rounded-lg border border-stone-200 bg-stone-50 px-3.5 py-3">
+              <div className="flex items-center gap-2">
+                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${vinculada ? 'bg-acento-500' : 'bg-stone-300'}`} />
+                <p className="text-sm font-medium text-stone-700">
+                  {vinculada ? 'Impresora vinculada en este dispositivo' : 'Sin impresora vinculada en este dispositivo'}
+                </p>
+              </div>
+              <p className="text-sm text-stone-500">
+                Cada PC o notebook del mostrador vincula su propia impresora una vez, desde Chrome
+                o Edge, con la impresora térmica conectada por USB. Al tocar "Vincular impresora" el
+                navegador muestra un selector de dispositivos — elegí la impresora ahí.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Boton tipo="button" variante="secundario" chico deshabilitado={vinculando} onClick={() => void vincular()}>
+                  {vinculando ? 'Vinculando…' : vinculada ? 'Cambiar impresora' : 'Vincular impresora'}
+                </Boton>
+                {vinculada && (
+                  <Boton tipo="button" variante="secundario" chico deshabilitado={imprimiendo} onClick={() => void imprimirPrueba()}>
+                    {imprimiendo ? 'Imprimiendo…' : 'Imprimir ticket de prueba'}
+                  </Boton>
+                )}
+              </div>
+              {aviso && <p className="text-sm font-medium text-acento-700">{aviso}</p>}
+            </div>
+            <MensajeError error={error} />
+            <div className="flex justify-end gap-2">
+              <Boton variante="secundario" onClick={onCerrar}>Cancelar</Boton>
+              <Boton tipo="submit" deshabilitado={guardando}>{guardando ? 'Guardando…' : 'Guardar'}</Boton>
+            </div>
           </div>
-          <MensajeError error={error} />
-          <div className="flex justify-end gap-2">
-            <Boton variante="secundario" onClick={onCerrar}>Cancelar</Boton>
-            <Boton tipo="submit" deshabilitado={guardando}>{guardando ? 'Guardando…' : 'Guardar'}</Boton>
+          <div className="sm:sticky sm:top-0 sm:self-start">
+            <VistaPreviaTicket encabezado={encabezado} pie={pie} />
           </div>
         </form>
       )}
